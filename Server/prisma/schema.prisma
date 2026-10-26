@@ -1,0 +1,433 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ENUMS
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+
+  @@map("user_status")
+}
+
+enum UserType {
+  ADMIN
+  RESTAURANT_OWNER
+  BRANCH_MANAGER
+  KITCHEN_STAFF
+  DELIVERY_STAFF
+  CUSTOMER
+
+  @@map("user_type")
+}
+
+enum GroupStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+
+  @@map("group_status")
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+  TEMPORARILY_CLOSED
+  CLOSED
+
+  @@map("branch_status")
+}
+
+enum MembershipRole {
+  GROUP_OWNER
+  GROUP_ADMIN
+  BRANCH_MANAGER
+  KITCHEN_STAFF
+  DELIVERY_STAFF
+
+  @@map("membership_role")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  REMOVED
+
+  @@map("membership_status")
+}
+
+enum AddressType {
+  HOME
+  WORK
+  OTHER
+
+  @@map("address_type")
+}
+
+enum MenuItemStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+
+  @@map("menu_item_status")
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  COMPLETED
+  REJECTED
+  EXPIRED
+  CANCELLED
+
+  @@map("order_status")
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+  PARTIALLY_REFUNDED
+
+  @@map("payment_status")
+}
+
+enum FulfillmentType {
+  DELIVERY
+  PICKUP
+  DINE_IN
+
+  @@map("fulfillment_type")
+}
+
+enum PaymentMethod {
+  ONLINE
+  CASH
+  PAY_AT_COUNTER
+
+  @@map("payment_method")
+}
+
+// 1. USERS
+
+model User {
+  id                String     @id @default(uuid()) @db.Uuid
+  fullName          String     @map("full_name")
+  email             String     @unique
+  phone             String?    @unique
+  passwordHash      String     @map("password_hash")
+  profileImageUrl   String?    @map("profile_image_url")
+  userType          UserType   @default(CUSTOMER) @map("user_type")
+  status            UserStatus @default(ACTIVE)
+  isEmailVerified   Boolean    @default(false) @map("is_email_verified")
+  isPhoneVerified   Boolean    @default(false) @map("is_phone_verified")
+  lastLoginAt       DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  passwordChangedAt DateTime?  @map("password_changed_at") @db.Timestamptz(6)
+  deletedAt         DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  addresses        Address[]
+  createdGroups    RestaurantGroup[] @relation("GroupCreator")
+  memberships      RestaurantMember[] @relation("MemberUser")
+  invitedMembers   RestaurantMember[] @relation("MemberInviter")
+  orders           Order[]
+
+  @@index([userType, status])
+  @@map("users")
+}
+
+// 2. ADDRESSES
+
+model Address {
+  id                   String      @id @default(uuid()) @db.Uuid
+  userId               String      @map("user_id") @db.Uuid
+  addressType          AddressType @default(HOME) @map("address_type")
+  label                String?
+  recipientName        String?     @map("recipient_name")
+  recipientPhone       String?     @map("recipient_phone")
+  addressLine1         String      @map("address_line1")
+  addressLine2         String?     @map("address_line2")
+  landmark             String?
+  city                 String
+  state                String
+  postalCode           String      @map("postal_code")
+  country              String      @default("India")
+  latitude             Decimal?    @db.Decimal(10, 7)
+  longitude            Decimal?    @db.Decimal(10, 7)
+  deliveryInstructions String?     @map("delivery_instructions")
+  isDefault            Boolean     @default(false) @map("is_default")
+  isActive             Boolean     @default(true) @map("is_active")
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  user   User    @relation(fields: [userId], references: [id])
+  orders Order[]
+
+  @@index([userId, isActive])
+  @@map("addresses")
+}
+
+// 3. RESTAURANT GROUPS
+
+model RestaurantGroup {
+  id                String      @id @default(uuid()) @db.Uuid
+  groupName         String      @map("group_name")
+  groupCode         String      @unique @map("group_code")
+  legalName         String?     @map("legal_name")
+  businessEmail     String?     @map("business_email")
+  businessPhone     String?     @map("business_phone")
+  taxNumber         String?     @map("tax_number")
+  logoUrl           String?     @map("logo_url")
+  websiteUrl        String?     @map("website_url")
+  status            GroupStatus @default(ACTIVE)
+  createdBy         String      @map("created_by") @db.Uuid
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  creator     User               @relation("GroupCreator", fields: [createdBy], references: [id])
+  branches    Branch[]
+  memberships RestaurantMember[]
+
+  @@index([status])
+  @@map("restaurant_groups")
+}
+
+// 4. BRANCHES
+
+model Branch {
+  id                            String       @id @default(uuid()) @db.Uuid
+  restaurantGroupId             String       @map("restaurant_group_id") @db.Uuid
+  branchName                    String       @map("branch_name")
+  branchCode                    String       @map("branch_code")
+  publicSlug                    String       @unique @map("public_slug")
+  phone                         String?
+  email                         String?
+  addressLine1                  String       @map("address_line1")
+  addressLine2                  String?      @map("address_line2")
+  landmark                      String?
+  city                          String
+  state                         String
+  postalCode                    String       @map("postal_code")
+  country                       String       @default("India")
+  latitude                      Decimal?     @db.Decimal(10, 7)
+  longitude                     Decimal?     @db.Decimal(10, 7)
+  timezone                      String       @default("Asia/Kolkata")
+  openingHours                  Json?        @map("opening_hours") @db.JsonB
+  currency                      String       @default("INR")
+  averagePreparationTimeMinutes Int          @default(30) @map("average_preparation_time_minutes")
+  acceptsDelivery               Boolean      @default(true) @map("accepts_delivery")
+  acceptsPickup                 Boolean      @default(true) @map("accepts_pickup")
+  acceptsDineIn                 Boolean      @default(false) @map("accepts_dine_in")
+  status                        BranchStatus @default(ACTIVE)
+  createdAt                     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                     DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  restaurantGroup RestaurantGroup   @relation(fields: [restaurantGroupId], references: [id])
+  memberships     RestaurantMember[]
+  categories      MenuCategory[]
+  menuItems       MenuItem[]
+  orders          Order[]
+
+  @@unique([restaurantGroupId, branchCode])
+  @@index([restaurantGroupId, status])
+  @@index([city, status])
+  @@map("branches")
+}
+
+// 5. RESTAURANT MEMBERS
+
+model RestaurantMember {
+  id                String           @id @default(uuid()) @db.Uuid
+  userId            String           @map("user_id") @db.Uuid
+  restaurantGroupId String           @map("restaurant_group_id") @db.Uuid
+  branchId          String?          @map("branch_id") @db.Uuid
+  role              MembershipRole
+  status            MembershipStatus @default(INVITED)
+  invitedBy         String?          @map("invited_by") @db.Uuid
+  joinedAt          DateTime?        @map("joined_at") @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user            User           @relation("MemberUser", fields: [userId], references: [id])
+  restaurantGroup RestaurantGroup @relation(fields: [restaurantGroupId], references: [id])
+  branch          Branch?        @relation(fields: [branchId], references: [id])
+  inviter         User?          @relation("MemberInviter", fields: [invitedBy], references: [id])
+
+  @@index([userId, status])
+  @@index([restaurantGroupId, status])
+  @@index([branchId, status])
+  @@map("restaurant_members")
+}
+
+// 6. MENU CATEGORIES
+
+model MenuCategory {
+  id           String   @id @default(uuid()) @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  name         String
+  description  String?
+  imageUrl     String?  @map("image_url")
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  branch    Branch      @relation(fields: [branchId], references: [id])
+  menuItems MenuItem[]
+
+  @@index([branchId, isActive, displayOrder])
+  @@map("menu_categories")
+}
+
+// 7. MENU ITEMS
+
+model MenuItem {
+  id                     String         @id @default(uuid()) @db.Uuid
+  branchId               String         @map("branch_id") @db.Uuid
+  categoryId             String         @map("category_id") @db.Uuid
+  name                   String
+  slug                   String
+  description            String?
+  imageUrl               String?        @map("image_url")
+  basePrice              Decimal        @map("base_price") @db.Decimal(12, 2)
+  isVegetarian           Boolean        @default(false) @map("is_vegetarian")
+  isVegan                Boolean        @default(false) @map("is_vegan")
+  isGlutenFree           Boolean        @default(false) @map("is_gluten_free")
+  preparationTimeMinutes Int            @default(15) @map("preparation_time_minutes")
+  status                 MenuItemStatus @default(ACTIVE)
+  isAvailable            Boolean        @default(true) @map("is_available")
+  displayOrder           Int            @default(0) @map("display_order")
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt              DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  branch       Branch             @relation(fields: [branchId], references: [id])
+  category     MenuCategory       @relation(fields: [categoryId], references: [id])
+  variants     MenuItemVariant[]
+  orderItems   OrderItem[]
+
+  @@unique([branchId, slug])
+  @@index([branchId, status, isAvailable])
+  @@index([categoryId, displayOrder])
+  @@map("menu_items")
+}
+
+// 8. MENU ITEM VARIANTS
+
+model MenuItemVariant {
+  id           String   @id @default(uuid()) @db.Uuid
+  menuItemId   String   @map("menu_item_id") @db.Uuid
+  name         String
+  price        Decimal  @db.Decimal(12, 2)
+  isDefault    Boolean  @default(false) @map("is_default")
+  isAvailable  Boolean  @default(true) @map("is_available")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  menuItem   MenuItem    @relation(fields: [menuItemId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([menuItemId, isAvailable, displayOrder])
+  @@map("menu_item_variants")
+}
+
+// 9. ORDERS
+
+model Order {
+  id                   String          @id @default(uuid()) @db.Uuid
+  orderNumber          String          @unique @map("order_number")
+  userId               String          @map("user_id") @db.Uuid
+  branchId             String          @map("branch_id") @db.Uuid
+  addressId            String?         @map("address_id") @db.Uuid
+  orderStatus          OrderStatus     @default(PENDING) @map("order_status")
+  paymentStatus        PaymentStatus   @default(UNPAID) @map("payment_status")
+  paymentMethod        PaymentMethod?  @map("payment_method")
+  fulfillmentType      FulfillmentType @map("fulfillment_type")
+  needsPackaging       Boolean         @default(false) @map("needs_packaging")
+  currency             String          @default("INR")
+  subtotal             Decimal         @db.Decimal(12, 2)
+  discountAmount       Decimal         @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  taxAmount            Decimal         @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  deliveryFee          Decimal         @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  totalAmount          Decimal         @map("total_amount") @db.Decimal(12, 2)
+  customerName         String          @map("customer_name")
+  customerPhone        String          @map("customer_phone")
+  customerNotes        String?         @map("customer_notes")
+  deliveryAddressLine1 String?         @map("delivery_address_line1")
+  deliveryAddressLine2 String?         @map("delivery_address_line2")
+  deliveryLandmark     String?         @map("delivery_landmark")
+  deliveryCity         String?         @map("delivery_city")
+  deliveryState        String?         @map("delivery_state")
+  deliveryPostalCode   String?         @map("delivery_postal_code")
+  deliveryLatitude     Decimal?        @map("delivery_latitude") @db.Decimal(10, 7)
+  deliveryLongitude    Decimal?        @map("delivery_longitude") @db.Decimal(10, 7)
+  tableNumber          String?         @map("table_number")
+  rejectionReason      String?         @map("rejection_reason")
+  cancellationReason   String?         @map("cancellation_reason")
+  scheduledAt          DateTime?       @map("scheduled_at") @db.Timestamptz(6)
+  acceptedAt           DateTime?       @map("accepted_at") @db.Timestamptz(6)
+  preparingAt          DateTime?       @map("preparing_at") @db.Timestamptz(6)
+  readyAt              DateTime?       @map("ready_at") @db.Timestamptz(6)
+  outForDeliveryAt     DateTime?       @map("out_for_delivery_at") @db.Timestamptz(6)
+  completedAt          DateTime?       @map("completed_at") @db.Timestamptz(6)
+  cancelledAt          DateTime?       @map("cancelled_at") @db.Timestamptz(6)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user       User        @relation(fields: [userId], references: [id])
+  branch     Branch      @relation(fields: [branchId], references: [id])
+  address    Address?    @relation(fields: [addressId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([userId, createdAt])
+  @@index([branchId, orderStatus, createdAt])
+  @@index([paymentStatus])
+  @@index([scheduledAt])
+  @@map("orders")
+}
+
+// 10. ORDER ITEMS
+
+model OrderItem {
+  id                   String   @id @default(uuid()) @db.Uuid
+  orderId              String   @map("order_id") @db.Uuid
+  menuItemId           String?  @map("menu_item_id") @db.Uuid
+  variantId            String?  @map("variant_id") @db.Uuid
+  itemName             String   @map("item_name")
+  variantName          String?  @map("variant_name")
+  unitPrice            Decimal  @map("unit_price") @db.Decimal(12, 2)
+  quantity             Int
+  lineTotal            Decimal  @map("line_total") @db.Decimal(12, 2)
+  customizations       Json?    @db.JsonB
+  specialInstructions String?  @map("special_instructions")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order    Order            @relation(fields: [orderId], references: [id])
+  menuItem MenuItem?        @relation(fields: [menuItemId], references: [id])
+  variant  MenuItemVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@index([menuItemId])
+  @@index([variantId])
+  @@map("order_items")
+}
