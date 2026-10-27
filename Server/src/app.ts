@@ -5,6 +5,8 @@ import userRoutes from "./routes/user.routes";
 import restaurantRoutes from "./routes/restaurant.routes";
 import branchRoutes from "./routes/branch.routes";
 import publicRoutes from "./routes/public.routes";
+import orderRoutes from "./routes/order.routes";
+import orderManagementRoutes from "./routes/order-management.routes";
 
 const app = express();
 
@@ -23,4 +25,6 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/restaurants", restaurantRoutes);
 app.use("/api/v1/branches", branchRoutes);
 app.use("/api/v1/public", publicRoutes);
+app.use("/api/v1/orders", orderRoutes);
+app.use("/api/v1/branch-orders", orderManagementRoutes);
 export default app;
