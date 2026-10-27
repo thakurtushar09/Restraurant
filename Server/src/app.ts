@@ -7,6 +7,7 @@ import branchRoutes from "./routes/branch.routes";
 import publicRoutes from "./routes/public.routes";
 import orderRoutes from "./routes/order.routes";
 import orderManagementRoutes from "./routes/order-management.routes";
+import customerOrderRoutes from "./routes/customer-order.routes";
 
 const app = express();
 
@@ -27,4 +28,5 @@ app.use("/api/v1/branches", branchRoutes);
 app.use("/api/v1/public", publicRoutes);
 app.use("/api/v1/orders", orderRoutes);
 app.use("/api/v1/branch-orders", orderManagementRoutes);
+app.use("/api/v1/customer-orders", customerOrderRoutes);
 export default app;
