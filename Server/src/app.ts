@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import userRoutes from "./routes/user.routes";
 import restaurantRoutes from "./routes/restaurant.routes";
 import branchRoutes from "./routes/branch.routes";
+import publicRoutes from "./routes/public.routes";
+
 const app = express();
 
 app.use(express.json());
@@ -20,4 +22,5 @@ app.get("/", (_req, res) => {
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/restaurants", restaurantRoutes);
 app.use("/api/v1/branches", branchRoutes);
+app.use("/api/v1/public", publicRoutes);
 export default app;
