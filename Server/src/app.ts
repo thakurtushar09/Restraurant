@@ -2,6 +2,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import userRoutes from "./routes/user.routes";
+import restaurantRoutes from "./routes/restaurant.routes";
 
 const app = express();
 
@@ -17,5 +18,5 @@ app.get("/", (_req, res) => {
 
 // User authentication routes
 app.use("/api/v1/users", userRoutes);
-
+app.use("/api/v1/restaurants", restaurantRoutes);
 export default app;
