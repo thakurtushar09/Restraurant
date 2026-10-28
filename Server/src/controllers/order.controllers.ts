@@ -1,9 +1,9 @@
-
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../config/prisma";
 import type { CheckoutRequestBody } from "../types/order.types";
+import { scheduleOrderReminder } from "../utils/schedule-order-reminder";
 
 export const checkout = async (req: Request<{}, {}, CheckoutRequestBody>,res: Response): Promise<void> => {
   try {
@@ -112,6 +112,7 @@ export const checkout = async (req: Request<{}, {}, CheckoutRequestBody>,res: Re
           acceptsDelivery: true,
           acceptsPickup: true,
           acceptsDineIn: true,
+          averagePreparationTimeMinutes: true,
         },
       });
 
@@ -285,13 +286,28 @@ export const checkout = async (req: Request<{}, {}, CheckoutRequestBody>,res: Re
         },
       });
 
-      return order;
+      return {
+        order,
+        preparationMinutes: branch.averagePreparationTimeMinutes,
+      };
     });
+
+    if (result.order.scheduledAt) {
+      try {
+        await scheduleOrderReminder(
+          result.order.id,
+          result.order.scheduledAt,
+          result.preparationMinutes
+        );
+      } catch (error) {
+        console.error("Failed to schedule order reminder:", error);
+      }
+    }
 
     res.status(201).json({
       success: true,
       message: "Order created successfully",
-      data: result,
+      data: result.order,
     });
   } catch (error) {
     const errors: Record<string, { status: number; message: string }> = {

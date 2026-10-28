@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx src/workers/order-reminder.worker.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
@@ -18,11 +19,13 @@
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.5.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.12.1",
     "pg": "^8.23.1"
