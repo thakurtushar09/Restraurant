@@ -1,9 +1,8 @@
-
 import type { Request, Response } from "express";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../config/prisma";
 import type { UpdateOrderStatusRequestBody } from "../types/order.types";
-
+import { cancelOrderReminder } from "../utils/schedule-order-reminder";
 type BranchParams = { branchId: string };
 type OrderParams = { branchId: string; orderId: string };
 
@@ -185,6 +184,14 @@ export const updateOrderStatus = async (req: Request<OrderParams, {}, UpdateOrde
         include: { orderItems: true },
       });
     });
+
+    if (["CANCELLED", "REJECTED"].includes(status)) {
+      try {
+        await cancelOrderReminder(orderId);
+      } catch (error) {
+        console.error("Failed to cancel order reminder:", error);
+      }
+    }
 
     res.status(200).json({
       success: true,

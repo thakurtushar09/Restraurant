@@ -25,3 +25,7 @@ export interface UpdateOrderStatusRequestBody {
   status:| "ACCEPTED"| "REJECTED"| "PREPARING"| "READY"| "OUT_FOR_DELIVERY"| "COMPLETED"| "CANCELLED";
   rejectionReason?: string;
 }
+
+export interface RescheduleOrderRequestBody {
+  scheduledAt: string;
+}
