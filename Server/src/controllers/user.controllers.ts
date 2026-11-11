@@ -38,6 +38,8 @@ export async function signup(req: Request,res: Response,next: NextFunction,): Pr
       return;
     }
 
+    const jwtSecret = getJwtSecret();
+
     const normalizedEmail = email.trim().toLowerCase();
 
     const existingUser = await prisma.user.findUnique({
@@ -67,6 +69,12 @@ export async function signup(req: Request,res: Response,next: NextFunction,): Pr
       },
     });
 
+    const token = jwt.sign({ sub: user.id }, jwtSecret, { expiresIn: "7d" });
+    res.cookie(COOKIE_NAME, token, {
+      ...cookieOptions,
+      maxAge: COOKIE_MAX_AGE,
+    });
+
     res.status(201).json({
       success: true,
       message: "Account created successfully",
@@ -84,6 +92,36 @@ export async function signup(req: Request,res: Response,next: NextFunction,): Pr
       return;
     }
 
+    next(error);
+  }
+}
+
+// CURRENT SESSION
+export async function getCurrentUser(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = res.locals.userId as string | undefined;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Please log in first" });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id: userId, status: "ACTIVE", deletedAt: null },
+      select: { id: true, fullName: true, email: true },
+    });
+
+    if (!user) {
+      res.clearCookie(COOKIE_NAME, cookieOptions);
+      res.status(401).json({ success: false, message: "Your account is unavailable" });
+      return;
+    }
+
+    res.status(200).json({ success: true, user });
+  } catch (error) {
     next(error);
   }
 }
