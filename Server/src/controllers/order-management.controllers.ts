@@ -2,9 +2,12 @@ import type { Request, Response } from "express";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../config/prisma";
 import type { UpdateOrderStatusRequestBody } from "../types/order.types";
-import { cancelOrderReminder } from "../utils/schedule-order-reminder";
+import { cancelOrderReminder, cancelOrderExpiry } from "../utils/schedule-order-reminder";
+import { notifyOrderEvent, type OrderEvent } from "../utils/notify";
 type BranchParams = { branchId: string };
 type OrderParams = { branchId: string; orderId: string };
+
+const SHIFT_HOURS = 12;
 
 type OrderStatus =| "PENDING"| "ACCEPTED"| "PREPARING"| "READY"| "OUT_FOR_DELIVERY"| "COMPLETED"| "REJECTED"| "EXPIRED"| "CANCELLED";
 
@@ -13,13 +16,26 @@ export const getBranchOrders = async (req: Request<BranchParams>,res: Response):
     const branchId = res.locals.branchId as string;
     const role = res.locals.membershipRole as string;
 
+    // Kitchen and delivery see their live work plus what they finished this shift.
+    const shiftStart = new Date(Date.now() - SHIFT_HOURS * 60 * 60 * 1000);
+
     const orders = await prisma.order.findMany({
       where: {
         branchId,
         ...(role === "KITCHEN_STAFF"
-          ? { orderStatus: { in: ["ACCEPTED", "PREPARING", "READY"] } }
+          ? {
+            OR: [
+              { orderStatus: { in: ["ACCEPTED", "PREPARING", "READY"] } },
+              { orderStatus: { in: ["OUT_FOR_DELIVERY", "COMPLETED"] }, readyAt: { gte: shiftStart } },
+            ],
+          }
           : role === "DELIVERY_STAFF"
-            ? { orderStatus: { in: ["READY", "OUT_FOR_DELIVERY"] } }
+            ? {
+              OR: [
+                { orderStatus: { in: ["READY", "OUT_FOR_DELIVERY"] } },
+                { orderStatus: "COMPLETED", completedAt: { gte: shiftStart } },
+              ],
+            }
             : {}),
       },
       include: {
@@ -185,13 +201,24 @@ export const updateOrderStatus = async (req: Request<OrderParams, {}, UpdateOrde
       });
     });
 
-    if (["CANCELLED", "REJECTED"].includes(status)) {
-      try {
-        await cancelOrderReminder(orderId);
-      } catch (error) {
-        console.error("Failed to cancel order reminder:", error);
-      }
+    try {
+      // Once the restaurant acts on a pending order it can no longer expire.
+      if (order.orderStatus === "PENDING") await cancelOrderExpiry(orderId);
+      if (["CANCELLED", "REJECTED"].includes(status)) await cancelOrderReminder(orderId);
+    } catch (error) {
+      console.error("Failed to update order jobs:", error);
     }
+
+    const events: Record<string, OrderEvent> = {
+      ACCEPTED: "ACCEPTED",
+      REJECTED: "REJECTED",
+      PREPARING: "PREPARING",
+      READY: "READY",
+      OUT_FOR_DELIVERY: "OUT_FOR_DELIVERY",
+      COMPLETED: "COMPLETED",
+      CANCELLED: "CANCELLED_BY_RESTAURANT",
+    };
+    void notifyOrderEvent(orderId, events[status]);
 
     res.status(200).json({
       success: true,

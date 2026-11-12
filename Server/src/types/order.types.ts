@@ -16,6 +16,7 @@ export interface CheckoutRequestBody {
   customerNotes?: string;
   needsPackaging?: boolean;
   scheduledAt?: string;
+  partySize?: number;
   items: CheckoutItem[];
 }
 
@@ -28,4 +29,8 @@ export interface UpdateOrderStatusRequestBody {
 
 export interface RescheduleOrderRequestBody {
   scheduledAt: string;
+}
+
+export interface CancelOrderRequestBody {
+  cancellationReason?: string;
 }

@@ -2,7 +2,9 @@
 import type { Request, Response } from "express";
 import { prisma } from "../config/prisma";
 import type { RescheduleOrderRequestBody } from "../types/order.types";
-import { scheduleOrderReminder } from "../utils/schedule-order-reminder";
+import {scheduleOrderReminder,scheduleOrderExpiry,scheduleArrivalReminder,orderExpiryTime,isValidScheduleTime,MAX_SCHEDULE_DAYS,} from "../utils/schedule-order-reminder";
+import { notifyOrderEvent } from "../utils/notify";
+import { isOpenAt } from "../utils/opening-hours";
 
 export const rescheduleOrder = async (
   req: Request<{ orderId: string }, {}, RescheduleOrderRequestBody>,
@@ -23,14 +25,10 @@ export const rescheduleOrder = async (
 
     const newScheduledAt = new Date(scheduledAt);
 
-    if (
-      !scheduledAt ||
-      Number.isNaN(newScheduledAt.getTime()) ||
-      newScheduledAt.getTime() <= Date.now()
-    ) {
+    if (!scheduledAt || !isValidScheduleTime(newScheduledAt)) {
       res.status(400).json({
         success: false,
-        message: "A valid future scheduled time is required",
+        message: `Scheduled time must be a valid date within the next ${MAX_SCHEDULE_DAYS} days`,
       });
       return;
     }
@@ -46,6 +44,8 @@ export const rescheduleOrder = async (
         branch: {
           select: {
             averagePreparationTimeMinutes: true,
+            openingHours: true,
+            timezone: true,
           },
         },
       },
@@ -59,16 +59,57 @@ export const rescheduleOrder = async (
       return;
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: order.id },
+    if (newScheduledAt.getTime() < Date.now() + order.branch.averagePreparationTimeMinutes * 60 * 1000) {
+      res.status(400).json({
+        success: false,
+        message: "That time is too soon for the kitchen. Please choose a later time.",
+      });
+      return;
+    }
+
+    if (!isOpenAt(order.branch.openingHours, order.branch.timezone, newScheduledAt)) {
+      res.status(400).json({
+        success: false,
+        message: "The restaurant is closed at that time. Please choose a time within opening hours.",
+      });
+      return;
+    }
+
+    // Conditional update so a just-accepted or cancelled order is not rescheduled.
+    const updateResult = await prisma.order.updateMany({
+      where: { id: order.id, orderStatus: "PENDING" },
       data: { scheduledAt: newScheduledAt },
     });
 
-    await scheduleOrderReminder(
-      updatedOrder.id,
-      newScheduledAt,
-      order.branch.averagePreparationTimeMinutes
-    );
+    if (updateResult.count === 0) {
+      res.status(409).json({
+        success: false,
+        message: "The order was updated by the restaurant. Refresh and try again.",
+      });
+      return;
+    }
+
+    const updatedOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+    });
+
+    // The new time is saved; a queue failure should not turn this into a 500.
+    try {
+      await scheduleOrderReminder(
+        updatedOrder.id,
+        newScheduledAt,
+        order.branch.averagePreparationTimeMinutes
+      );
+      await scheduleOrderExpiry(
+        updatedOrder.id,
+        orderExpiryTime(newScheduledAt, updatedOrder.createdAt, order.branch.averagePreparationTimeMinutes)
+      );
+      if (updatedOrder.fulfillmentType === "DINE_IN") await scheduleArrivalReminder(updatedOrder.id, newScheduledAt);
+    } catch (error) {
+      console.error("Failed to reschedule order reminder:", error);
+    }
+
+    void notifyOrderEvent(updatedOrder.id, "RESCHEDULED");
 
     res.status(200).json({
       success: true,

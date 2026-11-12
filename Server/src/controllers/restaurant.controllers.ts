@@ -1,9 +1,9 @@
-
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../config/prisma";
 import type { CreateRestaurantRequestBody } from "../types/restaurant.types";
+import {InputReader,InputError,parseBranchFields,assertFulfillment,patterns,} from "../utils/branch-input";
 
 const slugify = (value: string): string =>value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -18,48 +18,22 @@ export const createRestaurant = async (req:Request<{}, {}, CreateRestaurantReque
       });
       return;
     }
-    const {
-      groupName,
-      legalName,
-      businessEmail,
-      businessPhone,
-      taxNumber,
-      logoUrl,
-      websiteUrl,
-      branchName,
-      phone,
-      email,
-      addressLine1,
-      addressLine2,
-      landmark,
-      city,
-      state,
-      postalCode,
-      country,
-    } = req.body;
 
-    const requiredFields = {
-      groupName,
-      branchName,
-      addressLine1,
-      city,
-      state,
-      postalCode,
-    };
+    // Business details
+    const reader = new InputReader(req.body, "create");
+    const groupName = reader.text("groupName", "Restaurant name", { required: true, max: 100 }) as string;
+    const legalName = reader.text("legalName", "Legal name", { max: 150 });
+    const businessEmail = reader.text("businessEmail", "Business email", { pattern: patterns.EMAIL, message: "Business email must be a valid email address" });
+    const businessPhone = reader.text("businessPhone", "Business phone", { pattern: patterns.PHONE, message: "Business phone must be a valid phone number" });
+    const taxNumber = reader.text("taxNumber", "Tax number", { max: 30 });
+    const logoUrl = reader.text("logoUrl", "Logo URL", { max: 500, pattern: patterns.URL, message: "Logo URL must start with http:// or https://" });
+    const websiteUrl = reader.text("websiteUrl", "Website", { max: 500, pattern: patterns.URL, message: "Website must start with http:// or https://" });
 
-    const missingField = Object.entries(requiredFields).find(
-      ([, value]) => typeof value !== "string" || !value.trim()
-    );
+    // First branch details
+    const branchFields = parseBranchFields(req.body, "create");
+    assertFulfillment(branchFields);
 
-    if (missingField) {
-      res.status(400).json({
-        success: false,
-        message: `${missingField[0]} is required`,
-      });
-      return;
-    }
-
-    if (!slugify(groupName) || !slugify(branchName)) {
+    if (!slugify(groupName) || !slugify(branchFields.branchName!)) {
       res.status(400).json({
         success: false,
         message: "Restaurant and branch names must contain letters or numbers",
@@ -92,39 +66,30 @@ export const createRestaurant = async (req:Request<{}, {}, CreateRestaurantReque
 
     const groupCode = `${slugify(groupName).toUpperCase()}-${suffix}`;
     const branchCode = `BR-${suffix}`;
-    const publicSlug = `${slugify(branchName)}-${suffix.toLowerCase()}`;
+    const publicSlug = `${slugify(branchFields.branchName!)}-${suffix.toLowerCase()}`;
 
     const result = await prisma.$transaction(async (tx) => {
       const group = await tx.restaurantGroup.create({
         data: {
-          groupName: groupName.trim(),
+          groupName,
           groupCode,
-          legalName: legalName?.trim() || null,
-          businessEmail: businessEmail?.trim() || null,
-          businessPhone: businessPhone?.trim() || null,
-          taxNumber: taxNumber?.trim() || null,
-          logoUrl: logoUrl?.trim() || null,
-          websiteUrl: websiteUrl?.trim() || null,
+          legalName: legalName ?? null,
+          businessEmail: businessEmail ?? null,
+          businessPhone: businessPhone ?? null,
+          taxNumber: taxNumber ?? null,
+          logoUrl: logoUrl ?? null,
+          websiteUrl: websiteUrl ?? null,
           createdBy: userId,
         },
       });
 
       const branch = await tx.branch.create({
         data: {
+          ...branchFields,
           restaurantGroupId: group.id,
-          branchName: branchName.trim(),
           branchCode,
           publicSlug,
-          phone: phone?.trim() || null,
-          email: email?.trim() || null,
-          addressLine1: addressLine1.trim(),
-          addressLine2: addressLine2?.trim() || null,
-          landmark: landmark?.trim() || null,
-          city: city.trim(),
-          state: state.trim(),
-          postalCode: postalCode.trim(),
-          country: country?.trim() || "India",
-        },
+        } as Prisma.BranchUncheckedCreateInput,
       });
 
       const membership = await tx.restaurantMember.create({
@@ -153,6 +118,14 @@ export const createRestaurant = async (req:Request<{}, {}, CreateRestaurantReque
       data: result,
     });
   } catch (error) {
+    if (error instanceof InputError) {
+      res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
+
     console.error("Create restaurant error:", error);
 
     if (error instanceof Prisma.PrismaClientKnownRequestError &&error.code === "P2002"){

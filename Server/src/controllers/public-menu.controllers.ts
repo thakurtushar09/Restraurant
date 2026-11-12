@@ -25,8 +25,8 @@ export const getPublicBranches = async (
       return;
     }
 
-    if (fulfillment && fulfillment !== "DELIVERY" && fulfillment !== "PICKUP") {
-      res.status(400).json({ success: false, message: "Fulfillment must be DELIVERY or PICKUP" });
+    if (fulfillment && fulfillment !== "DELIVERY" && fulfillment !== "PREORDER") {
+      res.status(400).json({ success: false, message: "Fulfillment must be DELIVERY or PREORDER" });
       return;
     }
 
@@ -35,7 +35,9 @@ export const getPublicBranches = async (
       deletedAt: null,
       restaurantGroup: { status: "ACTIVE", deletedAt: null },
       ...(fulfillment === "DELIVERY" ? { acceptsDelivery: true } : {}),
-      ...(fulfillment === "PICKUP" ? { acceptsPickup: true } : {}),
+      ...(fulfillment === "PREORDER" ? { acceptsDineIn: true } : {}),
+      // Only list branches that take delivery or pre-orders (pickup is switched off for now).
+      AND: [{ OR: [{ acceptsDelivery: true }, { acceptsDineIn: true }] }],
       ...(city ? { city: { contains: city, mode: "insensitive" } } : {}),
       ...(query ? {
         OR: [
@@ -62,7 +64,7 @@ export const getPublicBranches = async (
         country: true,
         averagePreparationTimeMinutes: true,
         acceptsDelivery: true,
-        acceptsPickup: true,
+        acceptsDineIn: true,
         restaurantGroup: {
           select: { groupName: true, logoUrl: true },
         },
@@ -123,8 +125,10 @@ export const getPublicBranchMenu = async (req: Request<{ publicSlug: string }>,r
         state: true,
         averagePreparationTimeMinutes: true,
         acceptsDelivery: true,
-        acceptsPickup: true,
         acceptsDineIn: true,
+        currency: true,
+        timezone: true,
+        openingHours: true,
         restaurantGroup: { select: { groupName: true, logoUrl: true } },
 
         categories: {

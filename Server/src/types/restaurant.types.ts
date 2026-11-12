@@ -18,6 +18,15 @@ export interface CreateRestaurantRequestBody {
   state: string;
   postalCode: string;
   country?: string;
+  timezone?: string;
+  currency?: string;
+  averagePreparationTimeMinutes?: number;
+  acceptsDelivery?: boolean;
+  acceptsPickup?: boolean;
+  acceptsDineIn?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  openingHours?: OpeningHours;
 }
 //for branch
 export interface CreateBranchRequestBody {
@@ -37,6 +46,9 @@ export interface CreateBranchRequestBody {
   acceptsDelivery?: boolean;
   acceptsPickup?: boolean;
   acceptsDineIn?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  openingHours?: OpeningHours;
 }
 //menu items
 export interface CreateMenuCategoryRequestBody {
@@ -88,3 +100,55 @@ export interface CreateMenuItemVariantRequestBody {
   isAvailable?: boolean;
   displayOrder?: number;
 }
+
+//members
+export type MemberRole =| "GROUP_ADMIN"| "BRANCH_MANAGER"| "KITCHEN_STAFF"| "DELIVERY_STAFF";
+
+export interface AddMemberRequestBody {
+  email: string;
+  role: MemberRole;
+  branchId?: string;
+  // Needed only when no account exists yet for this email; both are emailed to the new member.
+  fullName?: string;
+  password?: string;
+}
+
+export interface UpdateMemberRequestBody {
+  role?: MemberRole;
+  branchId?: string | null;
+  status?: "ACTIVE" | "SUSPENDED" | "REMOVED";
+}
+
+//branch details shared by onboarding, create branch and edit branch
+export type WeekDay = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+
+export type OpeningHoursDay =
+  | { closed: true }
+  | { closed: false; open: string; close: string };
+
+export type OpeningHours = Record<WeekDay, OpeningHoursDay>;
+
+export interface BranchFields {
+  branchName?: string;
+  phone?: string | null;
+  email?: string | null;
+  addressLine1?: string;
+  addressLine2?: string | null;
+  landmark?: string | null;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  timezone?: string;
+  currency?: string;
+  averagePreparationTimeMinutes?: number;
+  acceptsDelivery?: boolean;
+  acceptsPickup?: boolean;
+  acceptsDineIn?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  openingHours?: OpeningHours;
+  status?: "ACTIVE" | "INACTIVE" | "TEMPORARILY_CLOSED";
+}
+
+export type UpdateBranchRequestBody = BranchFields;

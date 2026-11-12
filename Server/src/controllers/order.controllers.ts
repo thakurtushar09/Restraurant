@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../config/prisma";
 import type { CheckoutRequestBody } from "../types/order.types";
-import { scheduleOrderReminder } from "../utils/schedule-order-reminder";
+import {scheduleOrderReminder,scheduleOrderExpiry,scheduleArrivalReminder,orderExpiryTime,isValidScheduleTime,MAX_SCHEDULE_DAYS,} from "../utils/schedule-order-reminder";
+import { notifyOrderEvent } from "../utils/notify";
+import { isOpenAt } from "../utils/opening-hours";
 
 export const checkout = async (
   req: Request<{}, {}, CheckoutRequestBody>,
@@ -31,6 +33,7 @@ export const checkout = async (
       customerNotes,
       needsPackaging,
       scheduledAt,
+      partySize,
       items,
     } = req.body;
 
@@ -48,10 +51,27 @@ export const checkout = async (
       return;
     }
 
-    if (!["DELIVERY", "PICKUP", "DINE_IN"].includes(fulfillmentType)) {
+    // Pickup is switched off for now; DINE_IN is the "pre-order and eat at the restaurant" flow.
+    if (!["DELIVERY", "DINE_IN"].includes(fulfillmentType)) {
       res.status(400).json({
         success: false,
-        message: "Invalid fulfillment type",
+        message: fulfillmentType === "PICKUP" ? "Pickup is not available right now" : "Invalid fulfillment type",
+      });
+      return;
+    }
+
+    if (fulfillmentType === "DINE_IN" && (!Number.isInteger(partySize) || partySize! < 1 || partySize! > 20)) {
+      res.status(400).json({
+        success: false,
+        message: "Tell us how many guests are coming (1–20)",
+      });
+      return;
+    }
+
+    if (fulfillmentType === "DINE_IN" && !scheduledAt) {
+      res.status(400).json({
+        success: false,
+        message: "Choose when you'll arrive for your pre-order",
       });
       return;
     }
@@ -95,13 +115,10 @@ export const checkout = async (
     if (scheduledAt !== undefined) {
       requestedSchedule = new Date(scheduledAt);
 
-      if (
-        Number.isNaN(requestedSchedule.getTime()) ||
-        requestedSchedule.getTime() <= Date.now()
-      ) {
+      if (!isValidScheduleTime(requestedSchedule)) {
         res.status(400).json({
           success: false,
-          message: "Scheduled time must be a valid future date",
+          message: `Scheduled time must be a valid date within the next ${MAX_SCHEDULE_DAYS} days`,
         });
         return;
       }
@@ -132,9 +149,10 @@ export const checkout = async (
             id: true,
             currency: true,
             acceptsDelivery: true,
-            acceptsPickup: true,
             acceptsDineIn: true,
             averagePreparationTimeMinutes: true,
+            openingHours: true,
+            timezone: true,
           },
         });
 
@@ -144,10 +162,18 @@ export const checkout = async (
 
         if (
           (fulfillmentType === "DELIVERY" && !branch.acceptsDelivery) ||
-          (fulfillmentType === "PICKUP" && !branch.acceptsPickup) ||
           (fulfillmentType === "DINE_IN" && !branch.acceptsDineIn)
         ) {
           throw new Error("FULFILLMENT_UNAVAILABLE");
+        }
+
+        // The kitchen needs at least its prep time, and the branch must be open at that moment.
+        if (requestedSchedule) {
+          const earliest = Date.now() + branch.averagePreparationTimeMinutes * 60 * 1000;
+          if (requestedSchedule.getTime() < earliest) throw new Error("SCHEDULE_TOO_SOON");
+          if (!isOpenAt(branch.openingHours, branch.timezone, requestedSchedule)) throw new Error("CLOSED_AT_SCHEDULE");
+        } else if (!isOpenAt(branch.openingHours, branch.timezone, new Date())) {
+          throw new Error("CLOSED_NOW");
         }
 
         let deliveryAddress: {
@@ -279,7 +305,7 @@ export const checkout = async (
             addressId:
               fulfillmentType === "DELIVERY" ? addressId! : null,
             fulfillmentType,
-            paymentMethod: paymentMethod ?? null,
+            paymentMethod: paymentMethod ?? (fulfillmentType === "DINE_IN" ? "PAY_AT_COUNTER" : "CASH"),
             paymentStatus: "UNPAID",
             needsPackaging: needsPackaging ?? false,
             currency: branch.currency,
@@ -302,6 +328,7 @@ export const checkout = async (
               deliveryLongitude: deliveryAddress.longitude,
             }),
             scheduledAt: requestedSchedule ?? null,
+            partySize: fulfillmentType === "DINE_IN" ? partySize! : null,
             orderItems: {
               create: orderItems,
             },
@@ -322,17 +349,22 @@ export const checkout = async (
       }
     );
 
-    if (result.order.scheduledAt) {
-      try {
-        await scheduleOrderReminder(
-          result.order.id,
-          result.order.scheduledAt,
-          result.preparationMinutes
-        );
-      } catch (error) {
-        console.error("Failed to schedule order reminder:", error);
+    // Queue failures shouldn't undo a placed order; they're logged instead.
+    try {
+      if (result.order.scheduledAt) {
+        await scheduleOrderReminder(result.order.id, result.order.scheduledAt, result.preparationMinutes);
+        if (result.order.fulfillmentType === "DINE_IN") await scheduleArrivalReminder(result.order.id, result.order.scheduledAt);
       }
+      await scheduleOrderExpiry(
+        result.order.id,
+        orderExpiryTime(result.order.scheduledAt, result.order.createdAt, result.preparationMinutes)
+      );
+    } catch (error) {
+      console.error("Failed to schedule order jobs:", error);
     }
+
+    // Tell the guest it was sent and the kitchen it arrived; runs in the background.
+    void notifyOrderEvent(result.order.id, "PLACED");
 
     res.status(201).json({
       success: true,
@@ -368,6 +400,18 @@ export const checkout = async (
       VARIANT_UNAVAILABLE: {
         status: 400,
         message: "Selected variant is unavailable",
+      },
+      SCHEDULE_TOO_SOON: {
+        status: 400,
+        message: "That time is too soon for the kitchen. Please choose a later time.",
+      },
+      CLOSED_AT_SCHEDULE: {
+        status: 400,
+        message: "The restaurant is closed at that time. Please choose a time within opening hours.",
+      },
+      CLOSED_NOW: {
+        status: 400,
+        message: "The restaurant is closed right now. Schedule your order for when it opens.",
       },
       VARIANT_NOT_APPLICABLE: {
         status: 400,
