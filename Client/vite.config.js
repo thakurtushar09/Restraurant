@@ -5,8 +5,11 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Lets HTTPS tunnels (cloudflared quick tunnels) reach the dev server for phone testing.
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
-      '/api': 'http://localhost:3000',
+      // xfwd passes the visitor's IP on, so the API can rate-limit per person.
+      '/api': { target: 'http://localhost:3000', xfwd: true },
     },
   },
 })
