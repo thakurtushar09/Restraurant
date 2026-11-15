@@ -2,12 +2,23 @@
 import type { Request, Response } from "express";
 import { prisma } from "../config/prisma";
 import type { Prisma } from "../generated/prisma/client";
+import { distanceKm, toPoint, NEARBY_RADIUS_KM, type Point } from "../utils/geo";
 
 type ExploreQuery = {
   q?: string;
   city?: string;
   fulfillment?: string;
+  lat?: string;
+  lng?: string;
 };
+
+// Customer location from ?lat=&lng= (both or neither).
+function readLocation(query: ExploreQuery): Point | null | "invalid" {
+  if (query.lat === undefined && query.lng === undefined) return null;
+  const point = toPoint(query.lat, query.lng);
+  if (!point || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180) return "invalid";
+  return point;
+}
 
 export const getPublicBranches = async (
   req: Request<Record<string, never>, unknown, unknown, ExploreQuery>,
@@ -30,11 +41,19 @@ export const getPublicBranches = async (
       return;
     }
 
+    const location = readLocation(req.query);
+    if (location === "invalid") {
+      res.status(400).json({ success: false, message: "Location must be a valid latitude and longitude" });
+      return;
+    }
+
     const where: Prisma.BranchWhereInput = {
       status: "ACTIVE",
       deletedAt: null,
       restaurantGroup: { status: "ACTIVE", deletedAt: null },
       ...(fulfillment === "DELIVERY" ? { acceptsDelivery: true } : {}),
+      // Branches without a map pin can't be measured, so they're left out of nearby results.
+      ...(location ? { latitude: { not: null }, longitude: { not: null } } : {}),
       ...(fulfillment === "PREORDER" ? { acceptsDineIn: true } : {}),
       // Only list branches that take delivery or pre-orders (pickup is switched off for now).
       AND: [{ OR: [{ acceptsDelivery: true }, { acceptsDineIn: true }] }],
@@ -62,9 +81,13 @@ export const getPublicBranches = async (
         state: true,
         postalCode: true,
         country: true,
+        latitude: true,
+        longitude: true,
+        deliveryRadiusKm: true,
         averagePreparationTimeMinutes: true,
         acceptsDelivery: true,
         acceptsDineIn: true,
+        restaurantGroupId: true,
         restaurantGroup: {
           select: { groupName: true, logoUrl: true },
         },
@@ -84,13 +107,36 @@ export const getPublicBranches = async (
       },
     });
 
+    let results = branches.map((branch) => {
+      const point = toPoint(branch.latitude, branch.longitude);
+      const distance = location && point ? distanceKm(location, point) : null;
+      return {
+        ...branch,
+        latitude: point?.latitude ?? null,
+        longitude: point?.longitude ?? null,
+        distanceKm: distance === null ? null : Math.round(distance * 10) / 10,
+        deliversToYou: distance === null ? null : branch.acceptsDelivery && distance <= branch.deliveryRadiusKm,
+        menuItems: branch.menuItems.map((item) => ({ ...item, basePrice: Number(item.basePrice) })),
+      };
+    });
+
+    if (location) {
+      // Within range (delivery needs the branch's own radius), then only each restaurant's closest branch.
+      results = results
+        .filter((branch) => fulfillment === "DELIVERY" ? branch.deliversToYou : branch.distanceKm! <= NEARBY_RADIUS_KM)
+        .sort((a, b) => a.distanceKm! - b.distanceKm!);
+      const seenGroups = new Set<string>();
+      results = results.filter((branch) => {
+        if (seenGroups.has(branch.restaurantGroupId)) return false;
+        seenGroups.add(branch.restaurantGroupId);
+        return true;
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Available restaurants fetched successfully",
-      data: branches.map((branch) => ({
-        ...branch,
-        menuItems: branch.menuItems.map((item) => ({ ...item, basePrice: Number(item.basePrice) })),
-      })),
+      data: results,
     });
   } catch (error) {
     console.error("Get public restaurants error:", error);
@@ -123,6 +169,10 @@ export const getPublicBranchMenu = async (req: Request<{ publicSlug: string }>,r
         addressLine1: true,
         city: true,
         state: true,
+        postalCode: true,
+        latitude: true,
+        longitude: true,
+        deliveryRadiusKm: true,
         averagePreparationTimeMinutes: true,
         acceptsDelivery: true,
         acceptsDineIn: true,
@@ -199,10 +249,12 @@ export const getPublicBranchMenu = async (req: Request<{ publicSlug: string }>,r
       return;
     }
 
+    const point = toPoint(branch.latitude, branch.longitude);
+
     res.status(200).json({
       success: true,
       message: "Menu fetched successfully",
-      data: branch,
+      data: { ...branch, latitude: point?.latitude ?? null, longitude: point?.longitude ?? null },
     });
   } catch (error) {
     console.error("Get public menu error:", error);

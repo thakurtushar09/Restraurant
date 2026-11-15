@@ -21,6 +21,7 @@ export const getMyOrders = async (req: Request,res: Response):Promise<void> => {
         totalAmount: true,
         scheduledAt: true,
         partySize: true,
+        tableNumber: true,
         createdAt: true,
         completedAt: true,
         cancelledAt: true,

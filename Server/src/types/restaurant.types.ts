@@ -26,6 +26,7 @@ export interface CreateRestaurantRequestBody {
   acceptsDineIn?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  deliveryRadiusKm?: number;
   openingHours?: OpeningHours;
 }
 //for branch
@@ -48,6 +49,7 @@ export interface CreateBranchRequestBody {
   acceptsDineIn?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  deliveryRadiusKm?: number;
   openingHours?: OpeningHours;
 }
 //menu items
@@ -147,6 +149,7 @@ export interface BranchFields {
   acceptsDineIn?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  deliveryRadiusKm?: number;
   openingHours?: OpeningHours;
   status?: "ACTIVE" | "INACTIVE" | "TEMPORARILY_CLOSED";
 }

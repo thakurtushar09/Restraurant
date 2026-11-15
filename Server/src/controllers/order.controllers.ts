@@ -7,6 +7,16 @@ import type { CheckoutRequestBody } from "../types/order.types";
 import {scheduleOrderReminder,scheduleOrderExpiry,scheduleArrivalReminder,orderExpiryTime,isValidScheduleTime,MAX_SCHEDULE_DAYS,} from "../utils/schedule-order-reminder";
 import { notifyOrderEvent } from "../utils/notify";
 import { isOpenAt } from "../utils/opening-hours";
+import { distanceKm, toPoint } from "../utils/geo";
+
+// "12", "table 12" → "Table 12"; named spots like "Patio 2" stay as typed.
+function readTableLabel(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const label = value.trim().replace(/\s+/g, " ");
+  if (!label || label.length > 20 || !/^[\p{L}\p{N} #\-/]+$/u.test(label)) return null;
+  const rest = label.replace(/^table\s*/i, "");
+  return /^\d/.test(rest) ? `Table ${rest}` : label;
+}
 
 export const checkout = async (
   req: Request<{}, {}, CheckoutRequestBody>,
@@ -34,13 +44,18 @@ export const checkout = async (
       needsPackaging,
       scheduledAt,
       partySize,
+      tableNumber,
       items,
     } = req.body;
+
+    // Guests who scanned the restaurant's QR order to their table, for right now.
+    const atTable = tableNumber !== undefined;
 
     if (
       !branchId ||
       !customerName?.trim() ||
-      !customerPhone?.trim() ||
+      // Staff can find a guest at their table, so a phone number is optional there.
+      (!atTable && !customerPhone?.trim()) ||
       !Array.isArray(items) ||
       items.length === 0
     ) {
@@ -60,7 +75,30 @@ export const checkout = async (
       return;
     }
 
-    if (fulfillmentType === "DINE_IN" && (!Number.isInteger(partySize) || partySize! < 1 || partySize! > 20)) {
+    if (atTable && (fulfillmentType !== "DINE_IN" || scheduledAt !== undefined)) {
+      res.status(400).json({
+        success: false,
+        message: "Table orders are placed at the table for right now",
+      });
+      return;
+    }
+
+    const tableLabel = atTable ? readTableLabel(tableNumber) : null;
+    if (atTable && !tableLabel) {
+      res.status(400).json({
+        success: false,
+        message: "Enter your table number (up to 20 letters or numbers)",
+      });
+      return;
+    }
+
+    if (atTable && customerPhone !== undefined && customerPhone !== "" && typeof customerPhone !== "string") {
+      res.status(400).json({ success: false, message: "Phone must be text" });
+      return;
+    }
+
+    const partySizeGiven = partySize !== undefined && partySize !== null;
+    if (fulfillmentType === "DINE_IN" && (!atTable || partySizeGiven) && (!Number.isInteger(partySize) || partySize! < 1 || partySize! > 20)) {
       res.status(400).json({
         success: false,
         message: "Tell us how many guests are coming (1–20)",
@@ -68,7 +106,7 @@ export const checkout = async (
       return;
     }
 
-    if (fulfillmentType === "DINE_IN" && !scheduledAt) {
+    if (fulfillmentType === "DINE_IN" && !atTable && !scheduledAt) {
       res.status(400).json({
         success: false,
         message: "Choose when you'll arrive for your pre-order",
@@ -153,6 +191,9 @@ export const checkout = async (
             averagePreparationTimeMinutes: true,
             openingHours: true,
             timezone: true,
+            latitude: true,
+            longitude: true,
+            deliveryRadiusKm: true,
           },
         });
 
@@ -160,9 +201,10 @@ export const checkout = async (
           throw new Error("BRANCH_UNAVAILABLE");
         }
 
+        // Table orders come from guests already seated, so they don't depend on the pre-order switch.
         if (
           (fulfillmentType === "DELIVERY" && !branch.acceptsDelivery) ||
-          (fulfillmentType === "DINE_IN" && !branch.acceptsDineIn)
+          (fulfillmentType === "DINE_IN" && !atTable && !branch.acceptsDineIn)
         ) {
           throw new Error("FULFILLMENT_UNAVAILABLE");
         }
@@ -199,6 +241,14 @@ export const checkout = async (
 
           if (!address) {
             throw new Error("ADDRESS_NOT_FOUND");
+          }
+
+          // Branches with a map pin only deliver within their radius.
+          const branchPoint = toPoint(branch.latitude, branch.longitude);
+          if (branchPoint) {
+            const addressPoint = toPoint(address.latitude, address.longitude);
+            if (!addressPoint) throw new Error("ADDRESS_LOCATION_REQUIRED");
+            if (distanceKm(branchPoint, addressPoint) > branch.deliveryRadiusKm) throw new Error("OUT_OF_DELIVERY_RANGE");
           }
 
           deliveryAddress = {
@@ -315,7 +365,7 @@ export const checkout = async (
             deliveryFee: zeroAmount,
             totalAmount: subtotal,
             customerName: customerName.trim(),
-            customerPhone: customerPhone.trim(),
+            customerPhone: customerPhone?.trim() ?? "",
             customerNotes: customerNotes?.trim() || null,
             ...(deliveryAddress && {
               deliveryAddressLine1: deliveryAddress.addressLine1,
@@ -328,7 +378,8 @@ export const checkout = async (
               deliveryLongitude: deliveryAddress.longitude,
             }),
             scheduledAt: requestedSchedule ?? null,
-            partySize: fulfillmentType === "DINE_IN" ? partySize! : null,
+            partySize: fulfillmentType === "DINE_IN" && partySizeGiven ? partySize! : null,
+            tableNumber: tableLabel,
             orderItems: {
               create: orderItems,
             },
@@ -388,6 +439,14 @@ export const checkout = async (
       ADDRESS_NOT_FOUND: {
         status: 400,
         message: "Delivery address not found or inactive",
+      },
+      ADDRESS_LOCATION_REQUIRED: {
+        status: 400,
+        message: "Pin this delivery address on the map so we can check the restaurant delivers there",
+      },
+      OUT_OF_DELIVERY_RANGE: {
+        status: 400,
+        message: "This address is outside the restaurant's delivery area",
       },
       MENU_ITEM_UNAVAILABLE: {
         status: 400,

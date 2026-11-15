@@ -91,6 +91,18 @@ export function customerMessage(event: OrderEvent, order: LoadedOrder): Message 
   const t = times(order);
   const table = order.partySize ? `table for ${order.partySize}` : "table";
 
+  // Ordered by scanning the QR on a table: the guest is already seated.
+  if (order.tableNumber) {
+    switch (event) {
+      case "PLACED": return { title: `Order sent to ${group}`, body: `Waiting for the kitchen to confirm your order for ${order.tableNumber}.` };
+      case "ACCEPTED": return { title: "The kitchen is on it", body: `Your order is confirmed. It should reach ${order.tableNumber} around ${t.readyEstimate}.` };
+      case "PREPARING": return { title: "Your food is being prepared", body: `Coming to ${order.tableNumber} around ${t.readyEstimate}.` };
+      case "READY": return { title: "Your food is ready", body: `It's on its way to ${order.tableNumber}.` };
+      case "COMPLETED": return { title: "Enjoy your meal", body: `Thanks for dining with ${group}. Pay at the counter when you're done.` };
+      default: break; // rejections, cancellations and expiry read the same as any order
+    }
+  }
+
   switch (event) {
     case "PLACED":
       return {
@@ -142,6 +154,14 @@ export function staffMessage(event: OrderEvent, order: LoadedOrder): (Message & 
   const t = times(order);
   const who = order.customerName;
   const guests = order.partySize ? ` · ${order.partySize} guests` : "";
+
+  if (order.tableNumber && event === "PLACED") {
+    return {
+      audience: "kitchen",
+      title: `New order at ${order.tableNumber} ${shortNumber(order)}`,
+      body: `${who}${guests} · seated now · ${itemSummary(order)} · ${money(order.totalAmount)}. Accept by ${t.expiry}.`,
+    };
+  }
 
   switch (event) {
     case "PLACED":

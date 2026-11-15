@@ -232,6 +232,7 @@ model Branch {
   country                       String       @default("India")
   latitude                      Decimal?     @db.Decimal(10, 7)
   longitude                     Decimal?     @db.Decimal(10, 7)
+  deliveryRadiusKm              Int          @default(10) @map("delivery_radius_km")
   timezone                      String       @default("Asia/Kolkata")
   openingHours                  Json?        @map("opening_hours") @db.JsonB
   currency                      String       @default("INR")

@@ -182,6 +182,7 @@ export function parseBranchFields(body: unknown, mode: "create" | "update"): Bra
   }
   assign("latitude", latitude);
   assign("longitude", longitude);
+  assign("deliveryRadiusKm", reader.integer("deliveryRadiusKm", "Delivery radius", 1, 50) ?? (mode === "create" ? 10 : undefined));
 
   if (reader.has("openingHours")) {
     assign("openingHours", parseOpeningHours(reader.raw("openingHours")));

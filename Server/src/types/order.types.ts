@@ -17,6 +17,8 @@ export interface CheckoutRequestBody {
   needsPackaging?: boolean;
   scheduledAt?: string;
   partySize?: number;
+  // Set by a guest who scanned the restaurant's QR: an instant dine-in order to this table.
+  tableNumber?: string;
   items: CheckoutItem[];
 }
 
