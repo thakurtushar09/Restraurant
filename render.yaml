@@ -1,10 +1,35 @@
-# Render Blueprint: the CraveQ API, its background worker, and Redis.
+# Render Blueprint (free plan): the CraveQ API with the order worker running inside it, plus Redis.
 # The two websites (Client, client-restraurant) are deployed separately on Vercel.
 # Render → New → Blueprint → pick this repo. It asks for every `sync: false` value.
+#
+# Free-plan limits: the API sleeps after ~15 idle minutes (first visit then takes up to a minute),
+# reminders and auto-start run late while it sleeps, and free Redis can lose scheduled jobs on restart.
+# For real use: set the web service and Redis to `starter`, set RUN_WORKER to "false",
+# and add a `type: worker` service with startCommand `npm run start:worker`.
 
-envVarGroups:
-  - name: craveq-secrets
+services:
+  - type: web
+    name: craveq-api
+    runtime: node
+    rootDir: Server
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:prod # applies pending migrations, then starts the API
+    healthCheckPath: /
     envVars:
+      - key: NODE_ENV
+        value: production
+      # No separate worker on the free plan: reminders, auto-start and expiry run in the API process.
+      - key: RUN_WORKER
+        value: "true"
+      # Requests arrive via Vercel's proxy and then Render's: trust both hops for the visitor's IP.
+      - key: TRUST_PROXY
+        value: "2"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: craveq-redis
+          property: connectionString
       - key: DATABASE_URL # Neon connection string
         sync: false
       - key: JWT_SECRET
@@ -26,48 +51,8 @@ envVarGroups:
       - key: DASHBOARD_APP_URL
         sync: false
 
-services:
-  - type: web
-    name: craveq-api
-    runtime: node
-    rootDir: Server
-    plan: starter # free instances sleep when idle, which drops live notifications
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run start:prod # applies pending migrations, then starts the API
-    healthCheckPath: /
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # Requests arrive via Vercel's proxy and then Render's: trust both hops for the visitor's IP.
-      - key: TRUST_PROXY
-        value: "2"
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: craveq-redis
-          property: connectionString
-      - fromGroup: craveq-secrets
-
-  # Reminders, auto-start cooking and order expiry. Must always be running.
-  - type: worker
-    name: craveq-worker
-    runtime: node
-    rootDir: Server
-    plan: starter
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run start:worker
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: craveq-redis
-          property: connectionString
-      - fromGroup: craveq-secrets
-
   - type: keyvalue
     name: craveq-redis
-    plan: starter # the free plan doesn't persist, so scheduled reminders could be lost on restart
+    plan: free
     maxmemoryPolicy: noeviction # the job queue must never have keys evicted
-    ipAllowList: [] # reachable only from the services above
+    ipAllowList: [] # reachable only from the API
