@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import Icon from './Icon.jsx'
 import StatusChip from './StatusChip.jsx'
 import OrderActions from './OrderActions.jsx'
 import { Drawer } from './Overlay.jsx'
-import { money, clock, shortDate, scheduleLabel, fulfillmentLabel } from '../lib.js'
+import { money, clock, shortDate, scheduleLabel, fulfillmentLabel, canUseKitchen } from '../lib.js'
 
 const STEPS = [
   ['Placed', 'createdAt'],
@@ -13,7 +14,36 @@ const STEPS = [
   ['Completed', 'completedAt'],
 ]
 
-export default function OrderDrawer({ order, role, onUpdate, onClose }) {
+const DELAY_STEPS = [5, 10, 15, 30]
+
+// "Running late?" — push the ready time back; the customer is notified by the server.
+function ExtendTime({ order, onDelay }) {
+  const [busy, setBusy] = useState(null)
+
+  async function add(minutes) {
+    setBusy(minutes)
+    await onDelay(order, minutes)
+    setBusy(null)
+  }
+
+  return (
+    <div className="detail-block extend-time">
+      <span className="label">Running late?</span>
+      {order.delayMinutes > 0
+        ? <span>Pushed back {order.delayMinutes} min · customer expects it around <strong>{clock(order.delayedUntil)}</strong></span>
+        : <span className="muted">Add time and we’ll tell the customer the new ready time.</span>}
+      <div className="extend-buttons">
+        {DELAY_STEPS.map((minutes) => (
+          <button key={minutes} type="button" className="btn btn-ghost btn-sm" disabled={busy !== null || order.delayMinutes + minutes > 180} onClick={() => add(minutes)}>
+            {busy === minutes ? '…' : `+${minutes} min`}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function OrderDrawer({ order, role, onUpdate, onDelay, onClose }) {
   const steps = STEPS.filter(([, key]) => key !== 'outForDeliveryAt' || order.fulfillmentType === 'DELIVERY')
   const address = [order.deliveryAddressLine1, order.deliveryAddressLine2, order.deliveryLandmark, order.deliveryCity, order.deliveryPostalCode].filter(Boolean).join(', ')
 
@@ -29,7 +59,10 @@ export default function OrderDrawer({ order, role, onUpdate, onClose }) {
         <span className="chip chip-muted">{order.paymentStatus.replaceAll('_', ' ').toLowerCase()}{order.paymentMethod ? ` · ${order.paymentMethod.replaceAll('_', ' ').toLowerCase()}` : ''}</span>
         {order.needsPackaging && <span className="chip"><Icon name="bag" size={12} /> Packaging</span>}
         {order.scheduledAt && <span className="chip chip-accent"><Icon name="calendar" size={12} /> {scheduleLabel(order)} {shortDate(order.scheduledAt)}</span>}
+        {order.delayMinutes > 0 && <span className="chip chip-danger"><Icon name="clock" size={12} /> +{order.delayMinutes} min</span>}
       </div>
+
+      {onDelay && canUseKitchen(role) && ['ACCEPTED', 'PREPARING'].includes(order.orderStatus) && <ExtendTime order={order} onDelay={onDelay} />}
 
       <div className="detail-block">
         <span className="label">Customer</span>

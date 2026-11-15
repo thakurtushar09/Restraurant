@@ -42,7 +42,7 @@ function HourChart({ orders }) {
   )
 }
 
-export default function OverviewPage({ workspace, role, orders, ordersLoading, updateOrderStatus, navigate }) {
+export default function OverviewPage({ workspace, role, orders, ordersLoading, updateOrderStatus, delayOrder, navigate }) {
   const [selectedId, setSelectedId] = useState(null)
   const now = useNow()
   const currency = workspace.branch.currency ?? 'INR'
@@ -121,7 +121,7 @@ export default function OverviewPage({ workspace, role, orders, ordersLoading, u
         )}
       </section>
 
-      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onClose={() => setSelectedId(null)} />}
+      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onDelay={delayOrder} onClose={() => setSelectedId(null)} />}
     </>
   )
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import Icon from '../components/Icon.jsx'
+import AutoAcceptSwitch from '../components/AutoAcceptSwitch.jsx'
 import OrderDrawer from '../components/OrderDrawer.jsx'
 import useNow from '../components/useNow.js'
 import { clock, cookByTime, minutesFrom, duration, nextActions, fulfillmentLabel } from '../lib.js'
@@ -7,15 +8,17 @@ import { clock, cookByTime, minutesFrom, duration, nextActions, fulfillmentLabel
 // Ticket timing in kitchen terms: when to fire, how long it's been cooking, how long it's waited.
 function ticketTiming(order, now, prepMinutes) {
   if (order.orderStatus === 'ACCEPTED') {
-    const fireAt = order.scheduledAt ? cookByTime(order, prepMinutes) : new Date(order.acceptedAt ?? order.createdAt)
+    const base = order.scheduledAt ? cookByTime(order, prepMinutes) : new Date(order.acceptedAt ?? order.createdAt)
+    const fireAt = new Date(base.getTime() + (order.delayMinutes ?? 0) * 60000)
     const minutes = minutesFrom(fireAt, now)
     if (minutes > 0) return { tone: 'calm', label: `Start in ${duration(minutes)}`, sub: `at ${clock(fireAt)}` }
     return { tone: minutes < -5 ? 'late' : 'now', label: minutes < -1 ? `Start now · ${duration(minutes)} late` : 'Start now', sub: order.scheduledAt ? `Guest ${order.fulfillmentType === 'DINE_IN' ? 'arrives' : 'expects it'} ${clock(order.scheduledAt)}` : 'As soon as possible' }
   }
   if (order.orderStatus === 'PREPARING') {
     const cooking = -minutesFrom(order.preparingAt ?? order.updatedAt, now)
-    const progress = Math.min(1, cooking / Math.max(prepMinutes, 1))
-    return { tone: cooking > prepMinutes ? 'late' : 'calm', label: `Cooking ${duration(cooking)}`, sub: `Target ${prepMinutes}m`, progress }
+    const target = prepMinutes + (order.delayMinutes ?? 0)
+    const progress = Math.min(1, cooking / Math.max(target, 1))
+    return { tone: cooking > target ? 'late' : 'calm', label: `Cooking ${duration(cooking)}`, sub: `Target ${target}m`, progress }
   }
   const waiting = -minutesFrom(order.readyAt ?? order.updatedAt, now)
   return { tone: waiting > 10 ? 'late' : 'calm', label: `Ready ${duration(waiting)} ago`, sub: order.fulfillmentType === 'DELIVERY' ? 'Waiting for a rider' : 'Waiting to be served' }
@@ -44,6 +47,7 @@ function Ticket({ order, role, now, prepMinutes, onUpdate, onOpen }) {
         <div className="ticket-tags">
           <span className={`chip ${order.tableNumber ? 'chip-forest' : 'chip-muted'}`}>{fulfillmentLabel(order)}</span>
           {order.partySize && <span className="chip chip-muted"><Icon name="users" size={11} /> {order.partySize}</span>}
+          {order.delayMinutes > 0 && <span className="late-chip">+{order.delayMinutes}m</span>}
         </div>
       </header>
 
@@ -79,14 +83,14 @@ const LANES = [
   { status: 'READY', title: 'Ready', empty: 'Finished dishes wait here until they’re served or picked up.' },
 ]
 
-export default function KitchenPage({ workspace, role, orders, ordersLoading, ordersError, updateOrderStatus, reloadOrders }) {
+export default function KitchenPage({ workspace, role, orders, ordersLoading, ordersError, updateOrderStatus, delayOrder, setAutoAccept, reloadOrders }) {
   const [selectedId, setSelectedId] = useState(null)
   const now = useNow()
   const prepMinutes = workspace.branch.averagePreparationTimeMinutes ?? 30
 
   const { lanes, tally, doneCount } = useMemo(() => {
     // Next to fire first: scheduled tickets by their cook-by time, the rest by when they came in.
-    const fireTime = (order) => (order.scheduledAt ? cookByTime(order, prepMinutes) : new Date(order.acceptedAt ?? order.createdAt)).getTime()
+    const fireTime = (order) => (order.scheduledAt ? cookByTime(order, prepMinutes) : new Date(order.acceptedAt ?? order.createdAt)).getTime() + (order.delayMinutes ?? 0) * 60000
     const byLane = Object.fromEntries(LANES.map(({ status }) => [status, orders.filter((order) => order.orderStatus === status)]))
     byLane.ACCEPTED.sort((a, b) => fireTime(a) - fireTime(b))
     byLane.PREPARING.sort((a, b) => new Date(a.preparingAt) - new Date(b.preparingAt))
@@ -114,6 +118,7 @@ export default function KitchenPage({ workspace, role, orders, ordersLoading, or
 
   return (
     <>
+      <AutoAcceptSwitch workspace={workspace} role={role} onChange={setAutoAccept} />
       <div className="kitchen-strip">
         <div className={`strip-stat${lateCount ? ' alert' : ''}`}><span>To start now</span><strong>{lateCount}</strong></div>
         <div className="strip-stat"><span>Waiting</span><strong>{lanes.ACCEPTED.length}</strong></div>
@@ -146,7 +151,7 @@ export default function KitchenPage({ workspace, role, orders, ordersLoading, or
         </aside>
       </div>
 
-      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onClose={() => setSelectedId(null)} />}
+      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onDelay={delayOrder} onClose={() => setSelectedId(null)} />}
     </>
   )
 }

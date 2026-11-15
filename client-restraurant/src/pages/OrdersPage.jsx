@@ -4,6 +4,7 @@ import useMediaQuery from '../components/useMediaQuery.js'
 import Icon from '../components/Icon.jsx'
 import StatusChip from '../components/StatusChip.jsx'
 import OrderActions from '../components/OrderActions.jsx'
+import AutoAcceptSwitch from '../components/AutoAcceptSwitch.jsx'
 import OrderDrawer from '../components/OrderDrawer.jsx'
 import { ACTIVE_STATUSES, CLOSED_STATUSES, STATUS_META, money, timeAgo, clock, shortDate, scheduleLabel, cookByTime, fulfillmentLabel } from '../lib.js'
 
@@ -42,6 +43,7 @@ function OrderCard({ order, role, now, prepMinutes, fresh, onOpen, onUpdate, fea
       <div className="order-card-foot">
         <span className={`chip ${order.tableNumber ? 'chip-forest' : 'chip-muted'}`}>{order.tableNumber && <Icon name="qr" size={11} />}{fulfillmentLabel(order)}</span>
         {order.partySize && <span className="chip chip-muted"><Icon name="users" size={11} /> {order.partySize}</span>}
+        {order.delayMinutes > 0 && <span className="late-chip">+{order.delayMinutes}m</span>}
         {order.customerNotes && <span className="chip chip-accent" title={order.customerNotes}>Note</span>}
         <span className="total" title={`${itemCount} items`}>{money(order.totalAmount, order.currency)}</span>
       </div>
@@ -112,7 +114,7 @@ function StatusSection({ status, list, loading, expanded, onToggle, cardProps })
   )
 }
 
-export default function OrdersPage({ workspace, role, orders, ordersLoading, ordersError, freshIds, updateOrderStatus, reloadOrders, initialSelectedId = null }) {
+export default function OrdersPage({ workspace, role, orders, ordersLoading, ordersError, freshIds, updateOrderStatus, delayOrder, setAutoAccept, reloadOrders, initialSelectedId = null }) {
   const [view, setView] = useState('board')
   const [query, setQuery] = useState('')
   const [fulfillment, setFulfillment] = useState('')
@@ -140,6 +142,7 @@ export default function OrdersPage({ workspace, role, orders, ordersLoading, ord
 
   return (
     <>
+      <AutoAcceptSwitch workspace={workspace} role={role} onChange={setAutoAccept} />
       <div className="toolbar">
         <div className="segmented" role="tablist">
           <button className={view === 'board' ? 'active' : ''} onClick={() => setView('board')}>Board<span className="count">{active.length}</span></button>
@@ -209,7 +212,7 @@ export default function OrdersPage({ workspace, role, orders, ordersLoading, ord
         </div>
       )}
 
-      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onClose={() => setSelectedId(null)} />}
+      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onDelay={delayOrder} onClose={() => setSelectedId(null)} />}
     </>
   )
 }

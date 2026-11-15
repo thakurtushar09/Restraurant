@@ -6,7 +6,7 @@ export default function SetPasswordPage({ user, onChanged, onSignOut }) {
   return (
     <div className="auth">
       <section className="auth-visual">
-        <span className="wordmark">Name</span>
+        <span className="wordmark">CraveQ</span>
         <div>
           <span className="eyebrow" style={{ color: 'var(--sage)' }}>Welcome, {user.fullName.split(' ')[0]}</span>
           <h1 style={{ marginTop: 16 }}>Make this<br /><em>account yours.</em></h1>

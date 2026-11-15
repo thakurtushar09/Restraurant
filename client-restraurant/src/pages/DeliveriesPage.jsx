@@ -64,7 +64,7 @@ function DeliveryCard({ order, role, now, onUpdate, onOpen }) {
   )
 }
 
-export default function DeliveriesPage({ role, orders, ordersLoading, ordersError, updateOrderStatus, reloadOrders }) {
+export default function DeliveriesPage({ role, orders, ordersLoading, ordersError, updateOrderStatus, delayOrder, reloadOrders }) {
   const [selectedId, setSelectedId] = useState(null)
   const now = useNow()
 
@@ -136,7 +136,7 @@ export default function DeliveriesPage({ role, orders, ordersLoading, ordersErro
         </section>
       )}
 
-      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onClose={() => setSelectedId(null)} />}
+      {selected && <OrderDrawer order={selected} role={role} onUpdate={updateOrderStatus} onDelay={delayOrder} onClose={() => setSelectedId(null)} />}
     </>
   )
 }

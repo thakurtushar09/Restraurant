@@ -23,11 +23,11 @@ const BRANCH_KEY = 'kitchen:branch'
 
 // Each role gets its own set of pages; `nav: false` pages are reached from the user menu.
 const PAGES = {
-  overview: { title: 'Overview', allowed: canManageMenu },
-  orders: { title: 'Orders', allowed: canManageMenu },
-  kitchen: { title: 'Kitchen', allowed: canUseKitchen },
-  deliveries: { title: 'Deliveries', allowed: (role, workspace) => role === 'DELIVERY_STAFF' || (canUseDeliveries(role) && workspace?.branch.acceptsDelivery) },
-  manage: { title: 'Manage', allowed: canManageMenu },
+  overview: { title: 'Overview', icon: 'grid', allowed: canManageMenu },
+  orders: { title: 'Orders', icon: 'receipt', allowed: canManageMenu },
+  kitchen: { title: 'Kitchen', icon: 'chef', allowed: canUseKitchen },
+  deliveries: { title: 'Deliveries', icon: 'bike', allowed: (role, workspace) => role === 'DELIVERY_STAFF' || (canUseDeliveries(role) && workspace?.branch.acceptsDelivery) },
+  manage: { title: 'Manage', icon: 'store', allowed: canManageMenu },
   account: { title: 'Your account', allowed: () => true, nav: false },
 }
 // Pages that show the live order sync indicator.
@@ -163,6 +163,30 @@ export default function App() {
     }
   }
 
+  // Kitchen running behind: push the order back and let the guest know.
+  async function delayOrder(order, minutes) {
+    try {
+      const result = await api(`/branch-orders/${workspace.branchId}/${order.id}/delay`, { method: 'PATCH', body: { minutes } })
+      setOrders((current) => current.map((entry) => entry.id === order.id ? result.data : entry))
+      toast(`+${minutes} min on ${order.orderNumber.slice(-8)} · customer notified`)
+      return true
+    } catch (error) {
+      toast(error.message, 'error')
+      if (error.status === 409) loadOrders()
+      return false
+    }
+  }
+
+  async function setAutoAccept(enabled) {
+    try {
+      await api(`/restaurants/${workspace.groupId}/branches/${workspace.branchId}`, { method: 'PATCH', body: { autoAcceptPreorders: enabled } })
+      await loadMemberships()
+      toast(enabled ? 'Pre-orders will be accepted and started automatically' : 'Auto-accept turned off')
+    } catch (error) {
+      toast(error.message, 'error')
+    }
+  }
+
   function selectBranch(id) {
     if (id !== workspace?.branchId) {
       setOrders([])
@@ -240,21 +264,24 @@ export default function App() {
   const pendingCount = orders.filter((order) => order.orderStatus === 'PENDING').length
   const groups = [...new Map(workspaces.map((entry) => [entry.groupId, entry.groupName])).entries()]
   const canEditBranch = canManageMenu(role)
-  const pageProps = { workspace, role, user, workspaces, orders, ordersLoading, ordersError, freshIds, updateOrderStatus, reloadOrders: loadOrders, navigate, onSelect: selectBranch, onEditBranch: (id) => setBranchDrawer({ branchId: id }) }
+  const pageProps = { workspace, role, user, workspaces, orders, ordersLoading, ordersError, freshIds, updateOrderStatus, delayOrder, setAutoAccept, reloadOrders: loadOrders, navigate, onSelect: selectBranch, onEditBranch: (id) => setBranchDrawer({ branchId: id }) }
   const readyForDelivery = orders.filter((order) => order.orderStatus === 'READY' && order.fulfillmentType === 'DELIVERY').length
   const toCook = orders.filter((order) => order.orderStatus === 'ACCEPTED').length
+  const navPages = Object.entries(PAGES).filter(([, page]) => page.nav !== false && page.allowed(role, workspace))
   const badges = { orders: pendingCount, kitchen: role === 'KITCHEN_STAFF' ? toCook : 0, deliveries: readyForDelivery }
 
   return (
     <>
       <header className="navbar">
         <div className="navbar-inner">
-          {!isManage && <a className="wordmark" href={`/${home}`} onClick={(event) => { event.preventDefault(); navigate(home) }}>Name</a>}
+          {!isManage && <a className="wordmark" href={`/${home}`} onClick={(event) => { event.preventDefault(); navigate(home) }}>CraveQ</a>}
 
-          <nav className="nav-links" aria-label="Dashboard">
-            {Object.entries(PAGES).filter(([, page]) => page.nav !== false && page.allowed(role, workspace)).map(([key, page]) => (
+          {/* Becomes a bottom tab bar on phones, unless there's only one page to go to. */}
+          <nav className={`nav-links${navPages.length < 2 ? ' single' : ''}`} aria-label="Dashboard">
+            {navPages.map(([key, page]) => (
               <a key={key} href={`/${key}`} className={pageKey === key ? 'active' : ''} aria-current={pageKey === key ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(key) }}>
-                {page.title}
+                <span className="nav-icon"><Icon name={page.icon} size={20} /></span>
+                <span className="nav-label">{page.title}</span>
                 {badges[key] > 0 && <span className="nav-badge">{badges[key]}</span>}
               </a>
             ))}

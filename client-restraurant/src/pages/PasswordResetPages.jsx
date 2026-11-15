@@ -6,7 +6,7 @@ function Shell({ children }) {
   return (
     <div className="auth">
       <section className="auth-visual">
-        <span className="wordmark">Name</span>
+        <span className="wordmark">CraveQ</span>
         <div>
           <span className="eyebrow" style={{ color: 'var(--sage)' }}>Account recovery</span>
           <h1 style={{ marginTop: 16 }}>Back to service<br /><em>in a minute.</em></h1>

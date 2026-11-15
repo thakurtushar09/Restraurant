@@ -1,6 +1,6 @@
 {
-  "name": "Name — Restaurant dashboard",
-  "short_name": "Name Kitchen",
+  "name": "CraveQ — Restaurant dashboard",
+  "short_name": "CraveQ Kitchen",
   "description": "Orders, menus and your team in one place.",
   "start_url": "/overview",
   "scope": "/",
