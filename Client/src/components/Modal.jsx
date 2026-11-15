@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function Modal({ title, onClose, children, wide = false }) {
   useEffect(() => {
@@ -11,13 +12,15 @@ export default function Modal({ title, onClose, children, wide = false }) {
     }
   }, [onClose])
 
-  return (
+  // Portalled to <body>: inside the header, backdrop-filter would make `position: fixed` relative to it.
+  return createPortal(
     <>
       <div className="overlay" onClick={onClose} />
       <div className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {children}
       </div>
-    </>
+    </>,
+    document.body,
   )
 }

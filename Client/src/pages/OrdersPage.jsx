@@ -30,8 +30,8 @@ export default function OrdersPage({ navigate, onSignOut }) {
       <span className="main">
         <strong>{order.branch.restaurantGroup.groupName} · {order.branch.branchName}</strong>
         <small>
-          {FULFILLMENT_LABELS[order.fulfillmentType] ?? order.fulfillmentType}
-          {order.partySize ? ` · Table for ${order.partySize}` : ''}
+          {order.tableNumber ? `At ${order.tableNumber}` : FULFILLMENT_LABELS[order.fulfillmentType] ?? order.fulfillmentType}
+          {order.partySize ? ` · ${order.tableNumber ? `${order.partySize} guests` : `Table for ${order.partySize}`}` : ''}
           {order.scheduledAt ? ` · ${order.fulfillmentType === 'DINE_IN' ? 'Arriving' : 'For'} ${formatInZone(order.scheduledAt)}` : ` · ${formatInZone(order.createdAt)}`}
         </small>
         <small>{order.orderItems.map((item) => `${item.quantity}× ${item.itemName}`).join(', ')}</small>

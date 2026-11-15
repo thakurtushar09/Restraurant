@@ -13,7 +13,11 @@ import AuthPage from './pages/AuthPage.jsx'
 import VerifyEmailPage from './pages/VerifyEmailPage.jsx'
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordResetPages.jsx'
 import VerifyBanner from './components/VerifyBanner.jsx'
-import { loadCart, saveCart } from './lib.js'
+import LocationMenu from './components/LocationMenu.jsx'
+import ScanModal from './components/ScanModal.jsx'
+import { loadDineIn, saveDineIn, startDineIn, openedFromScan } from './table.js'
+import { api, loadCart, saveCart } from './lib.js'
+import { loadLocation, saveLocation, addressToLocation } from './geo.js'
 import { disablePush } from './push.js'
 
 const RETURN_PAGES = ['cart', 'checkout', 'orders']
@@ -53,6 +57,16 @@ function pathFor(page, param, returnTo) {
   }
 }
 
+// Opened from a printed QR (/restaurant/<slug>?scan=1): remember the restaurant and tidy the address bar.
+function takeScan() {
+  const route = readRoute()
+  if (route.page !== 'restaurant' || !openedFromScan()) return loadDineIn()
+  const dineIn = startDineIn(route.param)
+  saveDineIn(dineIn)
+  window.history.replaceState({}, '', pathFor('restaurant', route.param))
+  return dineIn
+}
+
 // Pages that need a signed-in customer.
 const PRIVATE_PAGES = ['checkout', 'orders', 'order']
 
@@ -61,6 +75,11 @@ function App() {
   const [postAuthPage, setPostAuthPage] = useState(readReturnPage)
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState(loadCart)
+  const [location, setLocation] = useState(loadLocation)
+  const [addresses, setAddresses] = useState(null) // signed-in customer's saved addresses
+  const [locationMenuOpen, setLocationMenuOpen] = useState(false)
+  const [dineIn, setDineIn] = useState(takeScan) // the restaurant whose QR a guest scanned, if any
+  const [scanning, setScanning] = useState(false)
   const [pendingAdd, setPendingAdd] = useState(null)
   const [user, setUser] = useState(null)
   const [sessionChecked, setSessionChecked] = useState(false)
@@ -70,12 +89,62 @@ function App() {
   const { page, param } = route
 
   useEffect(() => { saveCart(cart) }, [cart])
+  useEffect(() => { saveLocation(location) }, [location])
+
+  // Load saved addresses on sign-in and start from the default one if no spot is chosen yet.
+  const userId = user?.id
+  useEffect(() => {
+    if (!userId) return undefined
+    const controller = new AbortController()
+    api('/addresses', { signal: controller.signal })
+      .then((result) => {
+        setAddresses(result.data)
+        const fallback = result.data.find((address) => address.isDefault) ?? result.data[0]
+        setLocation((current) => {
+          if (current?.addressId && !result.data.some((address) => address.id === current.addressId)) return fallback ? addressToLocation(fallback) : null
+          return current ?? (fallback ? addressToLocation(fallback) : null)
+        })
+      })
+      .catch((error) => { if (error.name !== 'AbortError') console.error('Could not load addresses:', error) })
+    return () => controller.abort()
+  }, [userId])
+
+  // On sign-out, forget saved addresses and any location that came from one.
+  const forgetAccountLocation = useCallback(() => {
+    setAddresses(null)
+    setLocation((current) => current?.addressId ? null : current)
+  }, [])
+
+  // Scanned in the app: remember the restaurant and open its menu.
+  function onScanned(slug) {
+    const next = startDineIn(slug)
+    setDineIn(next)
+    saveDineIn(next)
+    setScanning(false)
+    navigate('restaurant', slug)
+  }
+
+  function leaveDineIn() {
+    setDineIn(null)
+    saveDineIn(null)
+  }
+
+  // Keeps the chosen location in step when its address is edited or deleted.
+  const updateAddresses = useCallback((next) => {
+    setAddresses(next)
+    setLocation((current) => {
+      if (!current?.addressId) return current
+      const address = next.find((item) => item.id === current.addressId)
+      return address ? addressToLocation(address) : null
+    })
+  }, [])
 
   // A 401 while signed in means the session was ended elsewhere; drop back to log in.
   useEffect(() => {
     if (!user) return undefined
     const onUnauthorized = (event) => {
       setUser(null)
+      forgetAccountLocation()
       window.history.pushState({}, '', '/login')
       setRoute({ page: 'auth', param: 'login' })
       setNotice({ message: event.detail.message, withCartLink: false, orderId: null })
@@ -83,7 +152,7 @@ function App() {
     }
     window.addEventListener('app:unauthorized', onUnauthorized)
     return () => window.removeEventListener('app:unauthorized', onUnauthorized)
-  }, [user])
+  }, [user, forgetAccountLocation])
 
   useEffect(() => {
     const onPopState = () => {
@@ -118,11 +187,11 @@ function App() {
         if (!response.ok || !result.success) throw new Error(result.message || 'Could not restore your session')
         return result.user
       })
-      .then((currentUser) => { if (currentUser) setUser(currentUser) })
+      .then((currentUser) => { if (currentUser) setUser(currentUser); else forgetAccountLocation() })
       .catch((error) => { if (error.name !== 'AbortError') console.error('Could not restore customer session:', error) })
       .finally(() => { if (!controller.signal.aborted) setSessionChecked(true) })
     return () => controller.abort()
-  }, [])
+  }, [forgetAccountLocation])
 
   const count = cart.items.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -168,6 +237,7 @@ function App() {
       await fetch('/api/v1/users/logout', { method: 'POST' })
     } finally {
       setUser(null)
+      forgetAccountLocation()
       navigate('home')
       showNotice('You’ve been signed out.')
     }
@@ -185,6 +255,9 @@ function App() {
       openingHours: menu.openingHours ?? null,
       timezone: menu.timezone,
       averagePreparationTimeMinutes: menu.averagePreparationTimeMinutes,
+      latitude: menu.latitude ?? null,
+      longitude: menu.longitude ?? null,
+      deliveryRadiusKm: menu.deliveryRadiusKm ?? null,
     }
     const line = {
       key: `${item.id}:${variant?.id ?? ''}`,
@@ -240,6 +313,16 @@ function App() {
           <a className="wordmark" href="/" onClick={link('home')} aria-label="Name home">
             <strong>Name</strong><small>good food, good days</small>
           </a>
+          <LocationMenu
+            user={user}
+            addresses={addresses}
+            onAddressesChange={updateAddresses}
+            location={location}
+            setLocation={setLocation}
+            openAuth={openAuth}
+            open={locationMenuOpen}
+            setOpen={setLocationMenuOpen}
+          />
           <label className="search">
             <Icon name="search" size={17} />
             <input
@@ -261,6 +344,7 @@ function App() {
               <button className="btn btn-ghost btn-sm" onClick={() => openAuth('signup')}>Sign up</button>
             </>}
           </nav>
+          <button className="scan-btn" onClick={() => setScanning(true)} aria-label="Scan a table QR code" title="Scan table QR"><Icon name="scan" size={18} /></button>
           {user && <NotificationBell key={user.id} navigate={navigate} onNotify={(notification) => showNotice(notification.title, false, 5000, notification.orderId)} />}
           <button className="cart-btn" onClick={() => navigate('cart')} aria-label={`Open cart, ${count} items`}>
             <Icon name="bag" size={17} /><span className="label">Cart</span><span className="count" key={count}>{count}</span>
@@ -281,17 +365,17 @@ function App() {
       ) : page === 'cart' ? (
         <CartPage cart={cart} user={user} navigate={navigate} openAuth={openAuth} changeQuantity={changeQuantity} />
       ) : page === 'checkout' ? (
-        user ? <CheckoutPage cart={cart} user={user} navigate={navigate} onPlaced={onOrderPlaced} /> : <main className="wrap" style={{ padding: 56 }}><div className="skeleton" style={{ height: 240 }} /></main>
+        user ? <CheckoutPage cart={cart} user={user} navigate={navigate} onPlaced={onOrderPlaced} dineIn={dineIn} location={location} setLocation={setLocation} addresses={addresses} onAddressesChange={updateAddresses} /> : <main className="wrap" style={{ padding: 56 }}><div className="skeleton" style={{ height: 240 }} /></main>
       ) : page === 'orders' ? (
         user ? <OrdersPage navigate={navigate} onSignOut={signOut} /> : <main className="wrap" style={{ padding: 56 }}><div className="skeleton" style={{ height: 240 }} /></main>
       ) : page === 'order' ? (
         user ? <OrderDetailPage key={param} orderId={param} navigate={navigate} notify={showNotice} /> : <main className="wrap" style={{ padding: 56 }}><div className="skeleton" style={{ height: 240 }} /></main>
       ) : page === 'explore' ? (
-        <ExplorePage search={search} setSearch={setSearch} openRestaurant={(slug) => navigate('restaurant', slug)} />
+        <ExplorePage search={search} setSearch={setSearch} openRestaurant={(slug) => navigate('restaurant', slug)} location={location} setLocation={setLocation} openLocationMenu={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setLocationMenuOpen(true) }} />
       ) : page === 'restaurant' ? (
-        <RestaurantPage key={param} slug={param} navigate={navigate} addToCart={addToCart} />
+        <RestaurantPage key={param} slug={param} navigate={navigate} addToCart={addToCart} location={location} dineIn={dineIn} onLeaveDineIn={leaveDineIn} />
       ) : (
-        <HomePage navigate={navigate} openRestaurant={(slug) => navigate('restaurant', slug)} />
+        <HomePage navigate={navigate} openRestaurant={(slug) => navigate('restaurant', slug)} location={location} onScan={() => setScanning(true)} dineIn={dineIn} />
       )}
 
       {!['auth', 'forgot', 'reset'].includes(page) && (
@@ -305,7 +389,7 @@ function App() {
             <nav className="col" aria-label="Discover">
               <h4>Discover</h4>
               <a href="/explore" onClick={link('explore')}>Explore kitchens</a>
-              <a href="/#how-it-works" onClick={(event) => { event.preventDefault(); navigate('home'); window.setTimeout(() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }), 50) }}>How pre-ordering works</a>
+              <a href="/#how-it-works" onClick={(event) => { event.preventDefault(); navigate('home'); window.setTimeout(() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }), 50) }}>How it works</a>
             </nav>
             <nav className="col" aria-label="Your account">
               <h4>Your account</h4>
@@ -316,6 +400,8 @@ function App() {
           </div>
         </footer>
       )}
+
+      {scanning && <ScanModal onClose={() => setScanning(false)} onSlug={onScanned} />}
 
       {pendingAdd && (
         <Modal title="Start a new cart?" onClose={() => setPendingAdd(null)}>

@@ -3,11 +3,13 @@ import Icon from '../components/Icon.jsx'
 import PageHero from '../components/PageHero.jsx'
 import VariantModal from '../components/VariantModal.jsx'
 import useReveal from '../components/useReveal.js'
+import MapView from '../components/MapView.jsx'
 import { money, isOpenAt } from '../lib.js'
+import { distanceKm, formatDistance, directionsUrl, toPoint } from '../geo.js'
 
 const initial = (name) => name.trim().charAt(0).toUpperCase()
 
-export default function RestaurantPage({ slug, navigate, addToCart }) {
+export default function RestaurantPage({ slug, navigate, addToCart, location, dineIn, onLeaveDineIn }) {
   const [menu, setMenu] = useState(null)
   const [error, setError] = useState('')
   const [choosing, setChoosing] = useState(null)
@@ -47,6 +49,13 @@ export default function RestaurantPage({ slug, navigate, addToCart }) {
 
   const openNow = menu ? isOpenAt(menu.openingHours, menu.timezone, new Date()) : false
   const add = (item) => item.variants.length ? setChoosing(item) : addToCart(menu, item, null)
+  const branchPoint = toPoint(menu)
+  const away = branchPoint && location ? distanceKm(location, branchPoint) : null
+  const deliversHere = away === null ? null : menu.acceptsDelivery && away <= menu.deliveryRadiusKm
+  const mapMarkers = branchPoint ? [
+    { id: 'branch', latitude: branchPoint.latitude, longitude: branchPoint.longitude, label: menu.branchName },
+    ...(location ? [{ id: 'you', kind: 'you', latitude: location.latitude, longitude: location.longitude, label: 'You are here' }] : []),
+  ] : []
   const coverImage = menu?.categories.flatMap((category) => category.menuItems).find((item) => item.imageUrl)?.imageUrl
 
   if (error) {
@@ -86,6 +95,8 @@ export default function RestaurantPage({ slug, navigate, addToCart }) {
           <div className="meta">
             <span><Icon name="pin" size={15} />{[menu.addressLine1, menu.city, menu.state].filter(Boolean).join(', ')}</span>
             <span><Icon name="clock" size={15} />About {menu.averagePreparationTimeMinutes} min to prepare</span>
+            {away !== null && <span><Icon name="bike" size={15} />{formatDistance(away)} from you{menu.acceptsDelivery ? deliversHere ? ' · delivers to you' : ' · outside delivery area' : ''}</span>}
+            {branchPoint && <a href="#find-us"><Icon name="pin" size={15} />See on map</a>}
           </div>
           <div className="chips">
             {menu.openingHours && <span className={`open-state on-dark${openNow ? ' open' : ''}`}>{openNow ? 'Open now' : 'Closed now · pre-order for later'}</span>}
@@ -96,6 +107,13 @@ export default function RestaurantPage({ slug, navigate, addToCart }) {
       </div>
 
       <div className="wrap" style={{ paddingBottom: 80 }}>
+        {dineIn?.publicSlug === slug && (
+          <div className="table-banner">
+            <span className="table-banner-icon"><Icon name="qr" size={18} /></span>
+            <span><strong>Ordering at your table</strong><small>Add dishes, then enter your table number at checkout. We’ll bring it over.</small></span>
+            <button type="button" className="link" onClick={onLeaveDineIn}>Not here right now?</button>
+          </div>
+        )}
         {categories.length > 0 && (
           <nav className="cat-nav glass" aria-label="Menu categories">
             {categories.map((category) => (
@@ -139,6 +157,28 @@ export default function RestaurantPage({ slug, navigate, addToCart }) {
             </div>
           </section>
         ))}
+
+        {branchPoint && (
+          <section className="category find-us" id="find-us">
+            <div className="category-head" data-reveal>
+              <h2>Find us</h2>
+              <p>{[menu.addressLine1, menu.city, menu.state, menu.postalCode].filter(Boolean).join(', ')}</p>
+            </div>
+            <div className="find-us-body" data-reveal>
+              <MapView
+                markers={mapMarkers}
+                circle={menu.acceptsDelivery ? { ...branchPoint, radiusKm: menu.deliveryRadiusKm } : null}
+                height={340}
+                label={`Map showing ${menu.branchName}`}
+              />
+              <div className="find-us-info">
+                {away !== null && <strong>{formatDistance(away)} from {location.label || 'you'}</strong>}
+                {menu.acceptsDelivery && <p>Delivers within {menu.deliveryRadiusKm} km of the restaurant (the shaded area).{deliversHere === false ? ' Your location is outside it, but you can still pre-order and dine in.' : ''}</p>}
+                <a className="btn btn-primary btn-sm" href={directionsUrl(branchPoint)} target="_blank" rel="noreferrer">Get directions <Icon name="arrow" size={15} /></a>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
       {choosing && <VariantModal item={choosing} onClose={() => setChoosing(null)} onAdd={(variant) => { addToCart(menu, choosing, variant); setChoosing(null) }} />}
     </main>

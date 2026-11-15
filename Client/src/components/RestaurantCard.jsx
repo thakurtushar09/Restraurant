@@ -1,4 +1,5 @@
 import Icon from './Icon.jsx'
+import { formatDistance } from '../geo.js'
 
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join('').toUpperCase()
 
@@ -24,11 +25,12 @@ export default function RestaurantCard({ restaurant, onOpen, index = 0 }) {
       <div className="r-body">
         <span className="group">{groupName}</span>
         <h3>{restaurant.branchName}</h3>
-        <span className="meta"><Icon name="pin" size={14} />{restaurant.city}, {restaurant.state}</span>
+        <span className="meta"><Icon name="pin" size={14} />{restaurant.distanceKm != null && <b className="distance">{formatDistance(restaurant.distanceKm)} away ·</b>}{restaurant.city}, {restaurant.state}</span>
         {restaurant.menuItems.length > 0 && <span className="dishes">{restaurant.menuItems.map((item) => item.name).join(' · ')}</span>}
         <div className="chips">
           {restaurant.acceptsDineIn && <span className="chip">Pre-order</span>}
-          {restaurant.acceptsDelivery && <span className="chip">Delivery</span>}
+          {restaurant.acceptsDelivery && restaurant.deliversToYou !== false && <span className="chip">{restaurant.deliversToYou ? 'Delivers to you' : 'Delivery'}</span>}
+          {restaurant.acceptsDelivery && restaurant.deliversToYou === false && <span className="chip chip-muted">Outside delivery area</span>}
           <span className="chip chip-muted">{restaurant._count.menuItems} dishes</span>
         </div>
       </div>

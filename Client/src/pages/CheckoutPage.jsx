@@ -1,83 +1,71 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import SlotPicker from '../components/SlotPicker.jsx'
 import PageHero from '../components/PageHero.jsx'
+import Modal from '../components/Modal.jsx'
+import AddressForm from '../components/AddressForm.jsx'
 import { api, money, isOpenAt, formatInZone } from '../lib.js'
+import { distanceKm, formatDistance, toPoint, addressTitle, addressLine, addressToLocation } from '../geo.js'
 
-const EMPTY_ADDRESS = { addressType: 'HOME', addressLine1: '', addressLine2: '', landmark: '', city: '', state: '', postalCode: '' }
-
-function AddressForm({ onSaved, onCancel }) {
-  const [form, setForm] = useState(EMPTY_ADDRESS)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
-
-  async function save(event) {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    try {
-      const result = await api('/addresses', { method: 'POST', body: form })
-      onSaved(result.data)
-    } catch (err) {
-      setError(err.message)
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form className="address-form" onSubmit={save}>
-      <div className="segmented" role="group" aria-label="Address type">
-        {[['HOME', 'Home'], ['WORK', 'Work'], ['OTHER', 'Other']].map(([value, label]) => (
-          <button type="button" key={value} className={form.addressType === value ? 'active' : ''} onClick={() => setForm({ ...form, addressType: value })}>{label}</button>
-        ))}
-      </div>
-      <div className="form-grid">
-        <label className="field span-2">House / flat, street<input value={form.addressLine1} onChange={set('addressLine1')} required autoFocus /></label>
-        <label className="field">Area <small>optional</small><input value={form.addressLine2} onChange={set('addressLine2')} /></label>
-        <label className="field">Landmark <small>optional</small><input value={form.landmark} onChange={set('landmark')} /></label>
-        <label className="field">City<input value={form.city} onChange={set('city')} required /></label>
-        <label className="field">State<input value={form.state} onChange={set('state')} required /></label>
-        <label className="field">Postal code<input value={form.postalCode} onChange={set('postalCode')} required /></label>
-      </div>
-      {error && <p className="form-error">{error}</p>}
-      <div className="row-actions">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : 'Save address'}</button>
-      </div>
-    </form>
-  )
+// { km, inRange } for an address against the branch's delivery area; null when either has no pin.
+function deliveryReach(branch, place) {
+  const from = toPoint(branch)
+  const to = toPoint(place)
+  if (!from || !to || !branch.deliveryRadiusKm) return null
+  const km = distanceKm(from, to)
+  return { km, inRange: km <= branch.deliveryRadiusKm }
 }
 
-export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
+function ReachNote({ branch, reach }) {
+  if (!reach) return null
+  return <small className={`reach${reach.inRange ? '' : ' out'}`}>{formatDistance(reach.km)} from {branch.branchName} · {reach.inRange ? 'within delivery area' : `outside the ${branch.deliveryRadiusKm} km delivery area`}</small>
+}
+
+// Unpinned addresses can't be checked against a pinned branch, so they're blocked too.
+const isBlocked = (branch, address) => deliveryReach(branch, address)?.inRange === false || Boolean(toPoint(branch) && !toPoint(address))
+
+export default function CheckoutPage({ cart, user, navigate, onPlaced, location, setLocation, addresses, onAddressesChange, dineIn }) {
   const branch = cart.branch
-  const [mode, setMode] = useState(branch?.acceptsDineIn ? 'DINE_IN' : 'DELIVERY')
+  // Scanned this branch's QR: order to the guest's table now, no time slot or address.
+  const atRestaurant = Boolean(dineIn && branch && dineIn.publicSlug === branch.slug)
+  const [mode, setMode] = useState(atRestaurant ? 'TABLE' : branch?.acceptsDineIn ? 'DINE_IN' : 'DELIVERY')
   const [timing, setTiming] = useState('asap') // delivery only: 'asap' | 'later'
   const [slot, setSlot] = useState('')
   const [partySize, setPartySize] = useState(2)
-  const [addresses, setAddresses] = useState(null)
-  const [addressId, setAddressId] = useState('')
+  const [tableNumber, setTableNumber] = useState('')
+  const [picked, setPicked] = useState('')
   const [addingAddress, setAddingAddress] = useState(false)
+  const [pinning, setPinning] = useState(null)
   const [contact, setContact] = useState({ customerName: user?.fullName ?? '', customerPhone: '', customerNotes: '' })
   const [error, setError] = useState('')
   const [placing, setPlacing] = useState(false)
 
   const preorder = mode === 'DINE_IN'
+  const tableOrder = mode === 'TABLE' && atRestaurant
   const openNow = branch ? isOpenAt(branch.openingHours, branch.timezone, new Date()) : false
 
-  // Saved addresses, only needed for delivery.
-  useEffect(() => {
-    if (mode !== 'DELIVERY' || addresses) return undefined
-    const controller = new AbortController()
-    api('/addresses', { signal: controller.signal })
-      .then((result) => {
-        setAddresses(result.data)
-        setAddressId(result.data.find((address) => address.isDefault)?.id ?? result.data[0]?.id ?? '')
-        if (result.data.length === 0) setAddingAddress(true)
-      })
-      .catch((err) => { if (err.name !== 'AbortError') setError(err.message) })
-    return () => controller.abort()
-  }, [mode, addresses])
+  // Picked here > the navbar's address > the default > the first, among ones this branch delivers to.
+  const usable = (addresses ?? []).filter((address) => !isBlocked(branch, address))
+  const addressId = [picked, location?.addressId, usable.find((address) => address.isDefault)?.id, usable[0]?.id]
+    .find((id) => id && usable.some((address) => address.id === id)) ?? ''
+  const showAddressForm = addingAddress || addresses?.length === 0
+
+  // Reload after a save (it may have become the default), then pick it if this branch delivers there.
+  async function addressSaved(address) {
+    try {
+      onAddressesChange((await api('/addresses')).data)
+    } catch {
+      onAddressesChange([...(addresses ?? []).filter((item) => item.id !== address.id), address])
+    }
+    if (!isBlocked(branch, address)) selectAddress(address)
+  }
+
+  // Choosing an address here also moves the navbar location to it.
+  function selectAddress(address) {
+    setPicked(address.id)
+    const next = addressToLocation(address)
+    if (next) setLocation(next)
+  }
 
   if (!branch || cart.items.length === 0) {
     return (
@@ -89,25 +77,30 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
 
   const total = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const count = cart.items.reduce((sum, item) => sum + item.quantity, 0)
-  const needsSlot = preorder || timing === 'later' || !openNow
+  const needsSlot = !tableOrder && (preorder || timing === 'later' || !openNow)
   const setField = (key) => (event) => setContact((current) => ({ ...current, [key]: event.target.value }))
 
   async function placeOrder(event) {
     event.preventDefault()
     setError('')
+    if (tableOrder && !openNow) return setError('The kitchen is closed right now, so it can’t take table orders.')
+    if (tableOrder && !tableNumber.trim()) return setError('Enter your table number.')
     if (needsSlot && !slot) return setError(preorder ? 'Choose when you’ll arrive.' : 'Choose a delivery time.')
-    if (!preorder && !addressId) return setError('Add a delivery address.')
+    if (mode === 'DELIVERY' && !addressId) return setError('Add a delivery address.')
+    const chosen = addresses?.find((address) => address.id === addressId)
+    if (mode === 'DELIVERY' && chosen && deliveryReach(branch, chosen)?.inRange === false) return setError('That address is outside the delivery area. Choose another or switch to pre-order.')
     setPlacing(true)
     try {
       const result = await api('/orders/checkout', {
         method: 'POST',
         body: {
           branchId: branch.id,
-          fulfillmentType: mode,
-          paymentMethod: preorder ? 'PAY_AT_COUNTER' : 'CASH',
-          ...(preorder ? {} : { addressId }),
+          fulfillmentType: mode === 'DELIVERY' ? 'DELIVERY' : 'DINE_IN',
+          paymentMethod: mode === 'DELIVERY' ? 'CASH' : 'PAY_AT_COUNTER',
+          ...(mode === 'DELIVERY' ? { addressId } : {}),
           ...(needsSlot ? { scheduledAt: slot } : {}),
-          ...(preorder ? { partySize } : {}),
+          ...(preorder || tableOrder ? { partySize } : {}),
+          ...(tableOrder ? { tableNumber: tableNumber.trim() } : {}),
           customerName: contact.customerName.trim(),
           customerPhone: contact.customerPhone.trim(),
           customerNotes: contact.customerNotes.trim() || undefined,
@@ -137,6 +130,13 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
           <section className="panel reveal">
             <h3><span className="num">1</span>How would you like it?</h3>
             <div className="mode-cards">
+              {atRestaurant && (
+                <button type="button" className={`mode-card${tableOrder ? ' active' : ''}`} onClick={() => setMode('TABLE')}>
+                  <Icon name="qr" size={22} />
+                  <strong>At my table</strong>
+                  <small>You’re here now. Your food comes straight to your table.</small>
+                </button>
+              )}
               {branch.acceptsDineIn && (
                 <button type="button" className={`mode-card${preorder ? ' active' : ''}`} onClick={() => setMode('DINE_IN')}>
                   <Icon name="calendar" size={22} />
@@ -145,7 +145,7 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
                 </button>
               )}
               {branch.acceptsDelivery && (
-                <button type="button" className={`mode-card${!preorder ? ' active' : ''}`} onClick={() => setMode('DELIVERY')}>
+                <button type="button" className={`mode-card${mode === 'DELIVERY' ? ' active' : ''}`} onClick={() => setMode('DELIVERY')}>
                   <Icon name="bike" size={22} />
                   <strong>Delivery</strong>
                   <small>Brought to your door, as soon as possible or at a time you choose.</small>
@@ -154,6 +154,21 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
             </div>
           </section>
 
+          {tableOrder ? (
+          <section className="panel reveal">
+            <h3><span className="num">2</span>Where are you sitting?</h3>
+            <label className="field table-field">Table number<input value={tableNumber} onChange={(event) => setTableNumber(event.target.value)} maxLength={20} placeholder="e.g. 12" autoComplete="off" required /><small>It’s usually on the table or the QR sticker.</small></label>
+            <div className="guests">
+              <span>Guests</span>
+              <div className="stepper">
+                <button type="button" onClick={() => setPartySize((n) => Math.max(1, n - 1))} aria-label="Fewer guests" disabled={partySize <= 1}>−</button>
+                <span aria-live="polite">{partySize}</span>
+                <button type="button" onClick={() => setPartySize((n) => Math.min(20, n + 1))} aria-label="More guests" disabled={partySize >= 20}>+</button>
+              </div>
+            </div>
+            <p className="hint">{openNow ? `The kitchen starts as soon as it confirms — usually ready in about ${branch.averagePreparationTimeMinutes} minutes.` : 'The kitchen is closed right now, so it can’t take table orders.'}</p>
+          </section>
+          ) : (
           <section className="panel reveal">
             <h3><span className="num">2</span>{preorder ? 'When will you arrive?' : 'When should it arrive?'}</h3>
             {!preorder && (
@@ -182,41 +197,52 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
               <p className="hint">Usually ready in about {branch.averagePreparationTimeMinutes} minutes, plus delivery time.</p>
             )}
           </section>
+          )}
 
-          {!preorder && (
+          {mode === 'DELIVERY' && (
             <section className="panel reveal">
               <h3><span className="num">3</span>Delivery address</h3>
               {addresses === null ? <div className="skeleton" style={{ height: 64 }} /> : <>
                 <div className="choice-list">
-                  {addresses.map((address) => (
-                    <label key={address.id} className={`choice${addressId === address.id ? ' active' : ''}`}>
-                      <input type="radio" name="address" checked={addressId === address.id} onChange={() => setAddressId(address.id)} />
-                      <span className="radio" />
-                      <span className="name"><strong>{address.label || address.addressType.charAt(0) + address.addressType.slice(1).toLowerCase()}</strong><small>{[address.addressLine1, address.addressLine2, address.city, address.postalCode].filter(Boolean).join(', ')}</small></span>
-                    </label>
-                  ))}
+                  {addresses.map((address) => {
+                    const reach = deliveryReach(branch, address)
+                    const needsPin = toPoint(branch) && !toPoint(address)
+                    const blocked = isBlocked(branch, address)
+                    return (
+                      <label key={address.id} className={`choice${addressId === address.id ? ' active' : ''}${blocked ? ' disabled' : ''}`}>
+                        <input type="radio" name="address" checked={addressId === address.id} disabled={blocked} onChange={() => selectAddress(address)} />
+                        <span className="radio" />
+                        <span className="name">
+                          <strong>{addressTitle(address)}</strong>
+                          <small>{addressLine(address)}</small>
+                          <ReachNote branch={branch} reach={reach} />
+                          {needsPin && <button type="button" className="link" onClick={(event) => { event.preventDefault(); setPinning(address) }}>Pin on map to check delivery</button>}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
-                {addingAddress
-                  ? <AddressForm onCancel={() => setAddingAddress(false)} onSaved={(address) => { setAddresses((current) => [...current, address]); setAddressId(address.id); setAddingAddress(false) }} />
+                {showAddressForm
+                  ? <AddressForm start={location} note={(pin) => <ReachNote branch={branch} reach={pin && deliveryReach(branch, pin)} />} onCancel={() => setAddingAddress(false)} onSaved={(address) => { addressSaved(address); setAddingAddress(false) }} />
                   : <button type="button" className="link" style={{ marginTop: 12 }} onClick={() => setAddingAddress(true)}>+ Add a new address</button>}
               </>}
             </section>
           )}
 
           <section className="panel reveal">
-            <h3><span className="num">{preorder ? 3 : 4}</span>Your details</h3>
+            <h3><span className="num">{mode === 'DELIVERY' ? 4 : 3}</span>Your details</h3>
             <div className="form-grid">
               <label className="field">Name<input value={contact.customerName} onChange={setField('customerName')} autoComplete="name" required /></label>
-              <label className="field">Phone<input type="tel" value={contact.customerPhone} onChange={setField('customerPhone')} autoComplete="tel" pattern="\+?[0-9][0-9\s\-]{6,18}" title="A valid phone number" placeholder="+91 98450 12345" required /></label>
-              <label className="field span-2">Note for the kitchen <small>optional</small><input value={contact.customerNotes} onChange={setField('customerNotes')} placeholder={preorder ? 'Allergies, celebrations, seating preferences…' : 'Allergies, gate code, spice level…'} maxLength={300} /></label>
+              <label className="field">Phone{tableOrder && <small>optional</small>}<input type="tel" value={contact.customerPhone} onChange={setField('customerPhone')} autoComplete="tel" pattern="\+?[0-9][0-9\s\-]{6,18}" title="A valid phone number" placeholder="+91 98450 12345" required={!tableOrder} /></label>
+              <label className="field span-2">Note for the kitchen <small>optional</small><input value={contact.customerNotes} onChange={setField('customerNotes')} placeholder={mode === 'DELIVERY' ? 'Allergies, gate code, spice level…' : 'Allergies, celebrations, seating preferences…'} maxLength={300} /></label>
             </div>
           </section>
         </div>
 
         <aside className="receipt">
           <span className="eyebrow plain">{branch.groupName} · {branch.branchName}</span>
-          <h2>{preorder ? 'Your pre-order' : 'Your delivery'}</h2>
-          <span className="sub">{count} {count === 1 ? 'item' : 'items'}{preorder ? ` · Table for ${partySize}` : ''}{slot && needsSlot ? ` · ${preorder ? 'Arriving' : 'For'} ${formatInZone(slot, branch.timezone)}` : ''}</span>
+          <h2>{tableOrder ? (tableNumber.trim() ? `Order for table ${tableNumber.trim().replace(/^table\s*/i, '')}` : 'Your table order') : preorder ? 'Your pre-order' : 'Your delivery'}</h2>
+          <span className="sub">{count} {count === 1 ? 'item' : 'items'}{preorder || tableOrder ? ` · ${partySize} ${partySize === 1 ? 'guest' : 'guests'}` : ''}{slot && needsSlot ? ` · ${preorder ? 'Arriving' : 'For'} ${formatInZone(slot, branch.timezone)}` : ''}</span>
           <div className="rule" />
           <div className="rows">
             {cart.items.map((item) => (
@@ -225,15 +251,20 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced }) {
           </div>
           <div className="rule" />
           <div className="total"><span>Total</span><strong>{money(total)}</strong></div>
-          <p className="note">{preorder ? 'Pay at the restaurant when you’re done.' : 'Pay in cash when your order arrives.'}</p>
+          <p className="note">{mode === 'DELIVERY' ? 'Pay in cash when your order arrives.' : 'Pay at the restaurant when you’re done.'}</p>
           {error && <p className="form-error" role="alert" style={{ marginBottom: 12 }}>{error}</p>}
           <button className="btn btn-primary btn-block" disabled={placing}>
-            {placing ? 'Placing order…' : preorder ? 'Confirm pre-order' : 'Place order'} <Icon name="arrow" size={16} />
+            {placing ? 'Placing order…' : tableOrder ? 'Send to the kitchen' : preorder ? 'Confirm pre-order' : 'Place order'} <Icon name="arrow" size={16} />
           </button>
           <p className="thanks">Thank you for eating local</p>
         </aside>
       </form>
       </div>
+      {pinning && (
+        <Modal title={`Pin ${addressTitle(pinning)}`} wide onClose={() => setPinning(null)}>
+          <AddressForm address={pinning} start={location} autoFocus={false} note={(pin) => <ReachNote branch={branch} reach={pin && deliveryReach(branch, pin)} />} onCancel={() => setPinning(null)} onSaved={(address) => { addressSaved(address); setPinning(null) }} />
+        </Modal>
+      )}
     </main>
   )
 }

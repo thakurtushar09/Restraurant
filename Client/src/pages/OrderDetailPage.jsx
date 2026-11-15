@@ -95,14 +95,16 @@ export default function OrderDetailPage({ orderId, navigate, notify }) {
         compact
         back="My orders"
         onBack={() => navigate('orders')}
-        eyebrow={<>{ACTIVE_STATUSES.includes(order.orderStatus) && <span className="live" />}{preorder ? 'Pre-order' : 'Delivery'} · #{order.orderNumber.slice(-8)}</>}
+        eyebrow={<>{ACTIVE_STATUSES.includes(order.orderStatus) && <span className="live" />}{order.tableNumber ? 'Table order' : preorder ? 'Pre-order' : 'Delivery'} · #{order.orderNumber.slice(-8)}</>}
         title={statusLabel(order)}
       >
+          {order.tableNumber && <p className="when"><Icon name="qr" size={18} />{order.tableNumber}{order.partySize ? ` · ${order.partySize} ${order.partySize === 1 ? 'guest' : 'guests'}` : ''}</p>}
           {order.scheduledAt && (
             <p className="when"><Icon name="calendar" size={18} />{preorder ? (order.partySize ? `Table for ${order.partySize} · ` : 'Your table · ') : 'Arriving '}{formatInZone(order.scheduledAt, branch.timezone)}</p>
           )}
           <p className="where"><Icon name="pin" size={16} />{branch.restaurantGroup.groupName} · {branch.branchName}, {[branch.addressLine1, branch.city].filter(Boolean).join(', ')}</p>
-          {preorder && !stopped && order.orderStatus !== 'COMPLETED' && <p className="band-note">Walk in at your time and give your name — your food will be ready.</p>}
+          {preorder && !order.tableNumber && !stopped && order.orderStatus !== 'COMPLETED' && <p className="band-note">Walk in at your time and give your name — your food will be ready.</p>}
+          {order.tableNumber && !stopped && order.orderStatus !== 'COMPLETED' && <p className="band-note">Sit tight — staff will bring it to {order.tableNumber}. Pay at the counter when you’re done.</p>}
           {order.rejectionReason && <p className="band-note bad">The restaurant declined: {order.rejectionReason}</p>}
           {order.cancellationReason && ['CANCELLED', 'EXPIRED'].includes(order.orderStatus) && <p className="band-note bad">{order.cancellationReason}{order.orderStatus === 'EXPIRED' ? '. You haven’t been charged — try another time or kitchen.' : ''}</p>}
           {canChange && (
