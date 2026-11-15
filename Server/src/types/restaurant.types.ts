@@ -24,6 +24,7 @@ export interface CreateRestaurantRequestBody {
   acceptsDelivery?: boolean;
   acceptsPickup?: boolean;
   acceptsDineIn?: boolean;
+  autoAcceptPreorders?: boolean;
   latitude?: number | null;
   longitude?: number | null;
   deliveryRadiusKm?: number;
@@ -47,6 +48,7 @@ export interface CreateBranchRequestBody {
   acceptsDelivery?: boolean;
   acceptsPickup?: boolean;
   acceptsDineIn?: boolean;
+  autoAcceptPreorders?: boolean;
   latitude?: number | null;
   longitude?: number | null;
   deliveryRadiusKm?: number;
@@ -147,6 +149,7 @@ export interface BranchFields {
   acceptsDelivery?: boolean;
   acceptsPickup?: boolean;
   acceptsDineIn?: boolean;
+  autoAcceptPreorders?: boolean;
   latitude?: number | null;
   longitude?: number | null;
   deliveryRadiusKm?: number;

@@ -240,6 +240,8 @@ model Branch {
   acceptsDelivery               Boolean      @default(true) @map("accepts_delivery")
   acceptsPickup                 Boolean      @default(false) @map("accepts_pickup")
   acceptsDineIn                 Boolean      @default(true) @map("accepts_dine_in")
+  // Pre-orders are accepted on arrival and moved to cooking at their start-cooking time.
+  autoAcceptPreorders           Boolean      @default(false) @map("auto_accept_preorders")
   status                        BranchStatus @default(ACTIVE)
   createdAt                     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -390,6 +392,9 @@ model Order {
   rejectionReason      String?         @map("rejection_reason")
   cancellationReason   String?         @map("cancellation_reason")
   scheduledAt          DateTime?       @map("scheduled_at") @db.Timestamptz(6)
+  // Extra time the kitchen asked for, and the ready time it pushes the order to.
+  delayMinutes         Int             @default(0) @map("delay_minutes")
+  delayedUntil         DateTime?       @map("delayed_until") @db.Timestamptz(6)
   acceptedAt           DateTime?       @map("accepted_at") @db.Timestamptz(6)
   preparingAt          DateTime?       @map("preparing_at") @db.Timestamptz(6)
   readyAt              DateTime?       @map("ready_at") @db.Timestamptz(6)

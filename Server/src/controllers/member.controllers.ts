@@ -53,6 +53,7 @@ const branchSummarySelect = {
   acceptsPickup: true,
   acceptsDineIn: true,
   averagePreparationTimeMinutes: true,
+  autoAcceptPreorders: true,
 } as const;
 
 type ManagerScope = { role: string; branchId: string | null };

@@ -48,17 +48,31 @@ async function addJob(name: string, jobId: string, orderId: string, runAt: numbe
   );
 }
 
+// The kitchen gets a heads-up this long before a scheduled order's start-cooking time.
+export const PREP_HEADS_UP_MINUTES = 10;
+
+// Start-cooking reminder, plus a heads-up shortly before it (skipped when that moment has passed).
 export async function scheduleOrderReminder(orderId: string,scheduledAt: Date,preparationMinutes: number): Promise<void> {
   const reminderAt = scheduledAt.getTime() - preparationMinutes * 60 * 1000;
   await addJob("preparation-reminder", `order-reminder-${orderId}`, orderId, reminderAt);
+
+  const headsUpAt = reminderAt - PREP_HEADS_UP_MINUTES * 60 * 1000;
+  const headsUpId = `order-heads-up-${orderId}`;
+  if (headsUpAt <= Date.now()) {
+    await removeJob(headsUpId);
+    return;
+  }
+  await addJob("prep-heads-up", headsUpId, orderId, headsUpAt);
 }
 
 export async function cancelOrderReminder(orderId: string):Promise<void> {
-  const job = await orderReminderQueue.getJob(`order-reminder-${orderId}`);
-  if (!job) return;
-  const state = await job.getState();
-  if (state === "waiting" || state === "delayed" || state === "prioritized") {
-    await job.remove();
+  for (const jobId of [`order-reminder-${orderId}`, `order-heads-up-${orderId}`]) {
+    const job = await orderReminderQueue.getJob(jobId);
+    if (!job) continue;
+    const state = await job.getState();
+    if (state === "waiting" || state === "delayed" || state === "prioritized") {
+      await job.remove();
+    }
   }
 }
 

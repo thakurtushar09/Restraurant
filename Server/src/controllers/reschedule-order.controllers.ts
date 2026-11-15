@@ -6,6 +6,8 @@ import {scheduleOrderReminder,scheduleOrderExpiry,scheduleArrivalReminder,orderE
 import { notifyOrderEvent } from "../utils/notify";
 import { isOpenAt } from "../utils/opening-hours";
 
+const RESCHEDULABLE = ["PENDING", "ACCEPTED"] as const;
+
 export const rescheduleOrder = async (
   req: Request<{ orderId: string }, {}, RescheduleOrderRequestBody>,
   res: Response
@@ -37,7 +39,8 @@ export const rescheduleOrder = async (
       where: {
         id: orderId,
         userId,
-        orderStatus: "PENDING",
+        // Guests can move their time until the kitchen starts cooking.
+        orderStatus: { in: [...RESCHEDULABLE] },
         scheduledAt: { not: null },
       },
       include: {
@@ -75,10 +78,11 @@ export const rescheduleOrder = async (
       return;
     }
 
-    // Conditional update so a just-accepted or cancelled order is not rescheduled.
+    // Conditional update so an order the kitchen just started (or cancelled) is not rescheduled.
+    // A new time also clears any delay the kitchen added for the old one.
     const updateResult = await prisma.order.updateMany({
-      where: { id: order.id, orderStatus: "PENDING" },
-      data: { scheduledAt: newScheduledAt },
+      where: { id: order.id, orderStatus: order.orderStatus },
+      data: { scheduledAt: newScheduledAt, delayMinutes: 0, delayedUntil: null },
     });
 
     if (updateResult.count === 0) {
@@ -100,10 +104,13 @@ export const rescheduleOrder = async (
         newScheduledAt,
         order.branch.averagePreparationTimeMinutes
       );
-      await scheduleOrderExpiry(
-        updatedOrder.id,
-        orderExpiryTime(newScheduledAt, updatedOrder.createdAt, order.branch.averagePreparationTimeMinutes)
-      );
+      // Only orders still waiting for the restaurant can expire.
+      if (updatedOrder.orderStatus === "PENDING") {
+        await scheduleOrderExpiry(
+          updatedOrder.id,
+          orderExpiryTime(newScheduledAt, updatedOrder.createdAt, order.branch.averagePreparationTimeMinutes)
+        );
+      }
       if (updatedOrder.fulfillmentType === "DINE_IN") await scheduleArrivalReminder(updatedOrder.id, newScheduledAt);
     } catch (error) {
       console.error("Failed to reschedule order reminder:", error);

@@ -7,9 +7,11 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
     "dev:worker": "tsx src/workers/order-reminder.worker.ts",
-    "build": "tsc",
+    "build": "prisma generate --config prisma7.config.ts && tsc",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start:prod": "prisma migrate deploy --config prisma7.config.ts && node dist/server.js",
+    "start:worker": "node dist/workers/order-reminder.worker.js"
   },
   "keywords": [],
   "author": "",
@@ -45,5 +47,8 @@
     "prisma": "^7.10.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

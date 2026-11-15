@@ -18,6 +18,10 @@ export type OrderEvent =
   | "RESCHEDULED"
   | "EXPIRED"
   | "COOK_NOW"
+  | "PREP_SOON"
+  | "AUTO_ACCEPTED"
+  | "AUTO_STARTED"
+  | "DELAYED"
   | "ARRIVAL_REMINDER";
 
 type Message = { title: string; body: string };
@@ -40,6 +44,7 @@ async function loadOrder(orderId: string) {
           city: true,
           timezone: true,
           averagePreparationTimeMinutes: true,
+          autoAcceptPreorders: true,
           restaurantGroupId: true,
           restaurantGroup: { select: { groupName: true } },
         },
@@ -81,10 +86,16 @@ function times(order: LoadedOrder) {
     // ASAP orders: ready about one prep-time from now.
     readyEstimate: formatTime(scheduled ?? new Date(Date.now() + prepMs), tz),
     expiry: formatTime(orderExpiryTime(scheduled, order.createdAt, order.branch.averagePreparationTimeMinutes), tz),
+    // New ready time after the kitchen asked for more time.
+    delayedUntil: order.delayedUntil ? formatTime(order.delayedUntil, tz) : null,
   };
 }
 
 export function customerMessage(event: OrderEvent, order: LoadedOrder): Message | null {
+  // Automatic steps read the same to the guest as the kitchen doing them by hand.
+  if (event === "AUTO_ACCEPTED") return customerMessage("ACCEPTED", order);
+  if (event === "AUTO_STARTED") return customerMessage("PREPARING", order);
+
   const preorder = order.fulfillmentType === "DINE_IN";
   const group = order.branch.restaurantGroup.groupName;
   const place = `${group} · ${order.branch.branchName}`;
@@ -99,6 +110,7 @@ export function customerMessage(event: OrderEvent, order: LoadedOrder): Message 
       case "PREPARING": return { title: "Your food is being prepared", body: `Coming to ${order.tableNumber} around ${t.readyEstimate}.` };
       case "READY": return { title: "Your food is ready", body: `It's on its way to ${order.tableNumber}.` };
       case "COMPLETED": return { title: "Enjoy your meal", body: `Thanks for dining with ${group}. Pay at the counter when you're done.` };
+      case "DELAYED": return { title: "Running a little late", body: `The kitchen needs about ${order.delayMinutes} more minutes. Your food should reach ${order.tableNumber} around ${t.delayedUntil}.` };
       default: break; // rejections, cancellations and expiry read the same as any order
     }
   }
@@ -139,6 +151,13 @@ export function customerMessage(event: OrderEvent, order: LoadedOrder): Message 
       return { title: "Order cancelled", body: `${place} cancelled your order${order.cancellationReason ? `: ${order.cancellationReason}` : "."}` };
     case "EXPIRED":
       return { title: "Not confirmed in time", body: `${order.branch.branchName} didn't confirm your order, so it was cancelled. You haven't been charged.` };
+    case "DELAYED":
+      return {
+        title: "Running a little late",
+        body: preorder
+          ? `${place} is running about ${order.delayMinutes} minutes behind. Your food will be ready around ${t.delayedUntil}. Sorry for the wait.`
+          : `${place} is running about ${order.delayMinutes} minutes behind. Your order is now expected around ${t.delayedUntil}.`,
+      };
     case "ARRIVAL_REMINDER":
       return {
         title: `See you at ${t.scheduled}`,
@@ -176,6 +195,21 @@ export function staffMessage(event: OrderEvent, order: LoadedOrder): (Message & 
       return { audience: "kitchen", title: `Time changed ${shortNumber(order)}`, body: `${who} now arrives at ${t.scheduled}. Start cooking at ${t.cookStart}.` };
     case "EXPIRED":
       return { audience: "kitchen", title: `Expired ${shortNumber(order)}`, body: `${who}'s order wasn't accepted in time and was cancelled automatically.` };
+    case "AUTO_ACCEPTED":
+      return {
+        audience: "kitchen",
+        title: `New ${preorder ? "pre-order" : "scheduled order"} ${shortNumber(order)} · auto-accepted`,
+        body: `${who}${guests} · ${preorder ? `arriving ${t.scheduled}` : `for ${t.scheduled}`} · ${money(order.totalAmount)}. It moves to Cooking automatically at ${t.cookStart}.`,
+      };
+    case "PREP_SOON":
+      if (order.orderStatus === "PENDING") {
+        return { audience: "kitchen", title: `Not accepted yet ${shortNumber(order)}`, body: `${who} arrives at ${t.scheduled}. Accept it now — cooking should start at ${t.cookStart}.` };
+      }
+      return order.branch.autoAcceptPreorders
+        ? { audience: "kitchen", title: `Cooking starts at ${t.cookStart} ${shortNumber(order)}`, body: `${who}${guests} arrives at ${t.scheduled}. It moves to Cooking automatically: ${itemSummary(order)}.` }
+        : { audience: "kitchen", title: `Get ready: start at ${t.cookStart} ${shortNumber(order)}`, body: `${who}${guests} arrives at ${t.scheduled}. Move it to Cooking at ${t.cookStart}: ${itemSummary(order)}.` };
+    case "AUTO_STARTED":
+      return { audience: "kitchen", title: `Started cooking automatically ${shortNumber(order)}`, body: `${who}${guests} arrives at ${t.scheduled}: ${itemSummary(order)}.` };
     case "COOK_NOW":
       return order.orderStatus === "PENDING"
         ? { audience: "kitchen", title: `Still not accepted ${shortNumber(order)}`, body: `${who} arrives at ${t.scheduled} — accept and start cooking now or it will expire.` }
@@ -188,7 +222,7 @@ export function staffMessage(event: OrderEvent, order: LoadedOrder): (Message & 
 }
 
 // Moments worth an email as well as a push; the rest are too frequent for an inbox.
-const EMAIL_EVENTS: OrderEvent[] = ["ACCEPTED", "REJECTED", "CANCELLED_BY_RESTAURANT", "EXPIRED"];
+const EMAIL_EVENTS: OrderEvent[] = ["ACCEPTED", "AUTO_ACCEPTED", "REJECTED", "CANCELLED_BY_RESTAURANT", "EXPIRED"];
 
 // Only to confirmed addresses, so we never email someone who mistyped theirs.
 async function emailCustomer(event: OrderEvent, order: LoadedOrder, message: Message): Promise<void> {

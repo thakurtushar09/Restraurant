@@ -36,3 +36,7 @@ export interface RescheduleOrderRequestBody {
 export interface CancelOrderRequestBody {
   cancellationReason?: string;
 }
+
+export interface DelayOrderRequestBody {
+  minutes: number;
+}

@@ -20,6 +20,8 @@ export const getMyOrders = async (req: Request,res: Response):Promise<void> => {
         currency: true,
         totalAmount: true,
         scheduledAt: true,
+        delayMinutes: true,
+        delayedUntil: true,
         partySize: true,
         tableNumber: true,
         createdAt: true,

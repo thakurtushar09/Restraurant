@@ -173,6 +173,7 @@ export function parseBranchFields(body: unknown, mode: "create" | "update"): Bra
   // Pickup is switched off for now; dine-in carries pre-orders.
   assign("acceptsPickup", reader.boolean("acceptsPickup", "Pickup") ?? (mode === "create" ? false : undefined));
   assign("acceptsDineIn", reader.boolean("acceptsDineIn", "Pre-orders") ?? (mode === "create" ? true : undefined));
+  assign("autoAcceptPreorders", reader.boolean("autoAcceptPreorders", "Auto-accept pre-orders") ?? (mode === "create" ? false : undefined));
 
   const latitude = reader.coordinate("latitude", "Latitude", 90);
   const longitude = reader.coordinate("longitude", "Longitude", 180);

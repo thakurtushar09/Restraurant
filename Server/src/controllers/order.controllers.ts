@@ -189,6 +189,7 @@ export const checkout = async (
             acceptsDelivery: true,
             acceptsDineIn: true,
             averagePreparationTimeMinutes: true,
+            autoAcceptPreorders: true,
             openingHours: true,
             timezone: true,
             latitude: true,
@@ -347,9 +348,13 @@ export const checkout = async (
         const orderNumber =
           `ORD-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
 
+        // Auto-accept branches confirm scheduled orders straight away.
+        const autoAccepted = branch.autoAcceptPreorders && Boolean(requestedSchedule);
+
         const order = await tx.order.create({
           data: {
             orderNumber,
+            ...(autoAccepted && { orderStatus: "ACCEPTED", acceptedAt: new Date() }),
             userId,
             branchId,
             addressId:
@@ -391,6 +396,7 @@ export const checkout = async (
 
         return {
           order,
+          autoAccepted,
           preparationMinutes: branch.averagePreparationTimeMinutes,
         };
       },
@@ -406,16 +412,19 @@ export const checkout = async (
         await scheduleOrderReminder(result.order.id, result.order.scheduledAt, result.preparationMinutes);
         if (result.order.fulfillmentType === "DINE_IN") await scheduleArrivalReminder(result.order.id, result.order.scheduledAt);
       }
-      await scheduleOrderExpiry(
-        result.order.id,
-        orderExpiryTime(result.order.scheduledAt, result.order.createdAt, result.preparationMinutes)
-      );
+      // Nothing to expire once accepted; the start-cooking job moves it on instead.
+      if (!result.autoAccepted) {
+        await scheduleOrderExpiry(
+          result.order.id,
+          orderExpiryTime(result.order.scheduledAt, result.order.createdAt, result.preparationMinutes)
+        );
+      }
     } catch (error) {
       console.error("Failed to schedule order jobs:", error);
     }
 
     // Tell the guest it was sent and the kitchen it arrived; runs in the background.
-    void notifyOrderEvent(result.order.id, "PLACED");
+    void notifyOrderEvent(result.order.id, result.autoAccepted ? "AUTO_ACCEPTED" : "PLACED");
 
     res.status(201).json({
       success: true,
