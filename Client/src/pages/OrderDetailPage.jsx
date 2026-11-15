@@ -86,7 +86,11 @@ export default function OrderDetailPage({ orderId, navigate, notify }) {
   const steps = STEPS[order.fulfillmentType] ?? STEPS.DELIVERY
   const reached = steps.findIndex(([status]) => status === order.orderStatus)
   const stopped = ['REJECTED', 'CANCELLED', 'EXPIRED'].includes(order.orderStatus)
-  const canChange = order.orderStatus === 'PENDING'
+  // The time can move until the kitchen starts cooking; cancelling only while the restaurant hasn't confirmed.
+  const canReschedule = Boolean(order.scheduledAt) && ['PENDING', 'ACCEPTED'].includes(order.orderStatus)
+  const canCancel = order.orderStatus === 'PENDING'
+  // A kitchen delay only matters until the food is ready.
+  const running = ['ACCEPTED', 'PREPARING'].includes(order.orderStatus)
 
   return (
     <main>
@@ -105,14 +109,16 @@ export default function OrderDetailPage({ orderId, navigate, notify }) {
           <p className="where"><Icon name="pin" size={16} />{branch.restaurantGroup.groupName} · {branch.branchName}, {[branch.addressLine1, branch.city].filter(Boolean).join(', ')}</p>
           {preorder && !order.tableNumber && !stopped && order.orderStatus !== 'COMPLETED' && <p className="band-note">Walk in at your time and give your name — your food will be ready.</p>}
           {order.tableNumber && !stopped && order.orderStatus !== 'COMPLETED' && <p className="band-note">Sit tight — staff will bring it to {order.tableNumber}. Pay at the counter when you’re done.</p>}
+          {running && order.delayMinutes > 0 && <p className="band-note late"><Icon name="clock" size={16} />Running about {order.delayMinutes} min late — now expected around {formatInZone(order.delayedUntil, branch.timezone)}.</p>}
           {order.rejectionReason && <p className="band-note bad">The restaurant declined: {order.rejectionReason}</p>}
           {order.cancellationReason && ['CANCELLED', 'EXPIRED'].includes(order.orderStatus) && <p className="band-note bad">{order.cancellationReason}{order.orderStatus === 'EXPIRED' ? '. You haven’t been charged — try another time or kitchen.' : ''}</p>}
-          {canChange && (
+          {(canReschedule || canCancel) && (
             <div className="actions">
-              {order.scheduledAt && <button className="btn btn-ghost" onClick={() => { setNewSlot(order.scheduledAt); setActionError(''); setRescheduling(true) }}>Change time</button>}
-              <button className="btn btn-ghost" onClick={() => { setActionError(''); setCancelling(true) }}>Cancel order</button>
+              {canReschedule && <button className="btn btn-ghost" onClick={() => { setNewSlot(order.scheduledAt); setActionError(''); setRescheduling(true) }}>Change time</button>}
+              {canCancel && <button className="btn btn-ghost" onClick={() => { setActionError(''); setCancelling(true) }}>Cancel order</button>}
             </div>
           )}
+          {order.orderStatus === 'ACCEPTED' && <p className="band-note">Confirmed orders can’t be cancelled{canReschedule ? ', but you can change your time until the kitchen starts cooking' : ''}.</p>}
       </PageHero>
       </div>
 

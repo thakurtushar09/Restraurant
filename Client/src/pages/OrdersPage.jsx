@@ -38,6 +38,7 @@ export default function OrdersPage({ navigate, onSignOut }) {
       </span>
       <span className="side">
         <span className="chip">{statusLabel(order)}</span>
+        {order.delayMinutes > 0 && ['ACCEPTED', 'PREPARING'].includes(order.orderStatus) && <span className="chip late">Running {order.delayMinutes} min late</span>}
         <strong>{money(order.totalAmount)}</strong>
       </span>
     </button>

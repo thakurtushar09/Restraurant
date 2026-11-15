@@ -15,6 +15,7 @@ import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordResetPage
 import VerifyBanner from './components/VerifyBanner.jsx'
 import LocationMenu from './components/LocationMenu.jsx'
 import ScanModal from './components/ScanModal.jsx'
+import TabBar from './components/TabBar.jsx'
 import { loadDineIn, saveDineIn, startDineIn, openedFromScan } from './table.js'
 import { api, loadCart, saveCart } from './lib.js'
 import { loadLocation, saveLocation, addressToLocation } from './geo.js'
@@ -86,7 +87,19 @@ function App() {
   const [notice, setNotice] = useState(null)
   const searchInputRef = useRef(null)
   const noticeTimer = useRef(null)
+  const headerRef = useRef(null)
   const { page, param } = route
+
+  // The header wraps to two rows on phones; sticky bars and dropdowns sit under its real height.
+  useEffect(() => {
+    const header = headerRef.current
+    if (!header || !('ResizeObserver' in window)) return undefined
+    const observer = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--header-h', `${Math.round(header.getBoundingClientRect().height)}px`)
+    })
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => { saveCart(cart) }, [cart])
   useEffect(() => { saveLocation(location) }, [location])
@@ -308,10 +321,10 @@ function App() {
 
   return (
     <>
-      <header className="header">
+      <header className="header" ref={headerRef}>
         <div className="wrap header-inner">
-          <a className="wordmark" href="/" onClick={link('home')} aria-label="Name home">
-            <strong>Name</strong><small>good food, good days</small>
+          <a className="wordmark" href="/" onClick={link('home')} aria-label="CraveQ home">
+            <strong>CraveQ</strong><small>good food, good days</small>
           </a>
           <LocationMenu
             user={user}
@@ -383,7 +396,7 @@ function App() {
           <div className="band-glow" aria-hidden="true" />
           <div className="wrap footer-inner">
             <div className="footer-brand">
-              <a className="wordmark" href="/" onClick={link('home')}><strong>Name</strong><small>good food, good days</small></a>
+              <a className="wordmark" href="/" onClick={link('home')}><strong>CraveQ</strong><small>good food, good days</small></a>
               <p className="tagline">Pre-order from local kitchens and walk in to a meal that’s ready when you are.</p>
             </div>
             <nav className="col" aria-label="Discover">
@@ -396,9 +409,13 @@ function App() {
               {user ? <a href="/orders" onClick={link('orders')}>My orders</a> : <a href="/login" onClick={(event) => { event.preventDefault(); openAuth('login') }}>Log in</a>}
               <a href="/cart" onClick={link('cart')}>Cart</a>
             </nav>
-            <div className="legal"><span>© {new Date().getFullYear()} Name</span><span>Good days are made around the table.</span></div>
+            <div className="legal"><span>© {new Date().getFullYear()} CraveQ</span><span>Good days are made around the table.</span></div>
           </div>
         </footer>
+      )}
+
+      {!['auth', 'forgot', 'reset'].includes(page) && (
+        <TabBar page={page} user={user} count={count} navigate={navigate} openAuth={openAuth} onScan={() => setScanning(true)} />
       )}
 
       {scanning && <ScanModal onClose={() => setScanning(false)} onSlug={onScanned} />}

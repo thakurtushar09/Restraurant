@@ -63,6 +63,12 @@ export default function CartPage({ cart, user, navigate, openAuth, changeQuantit
             </button>
             <p className="thanks">Thank you for eating local</p>
           </aside>
+          <div className="checkout-bar">
+            <span><small>{count} {count === 1 ? 'item' : 'items'}</small><strong>{money(total)}</strong></span>
+            <button className="btn btn-primary" onClick={() => user ? navigate('checkout') : openAuth('login', 'checkout')}>
+              {user ? 'Checkout' : 'Sign in to check out'} <Icon name="arrow" size={16} />
+            </button>
+          </div>
         </div>
       )}
       </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import SlotPicker from '../components/SlotPicker.jsx'
 import PageHero from '../components/PageHero.jsx'
@@ -39,6 +39,12 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced, location,
   const [contact, setContact] = useState({ customerName: user?.fullName ?? '', customerPhone: '', customerNotes: '' })
   const [error, setError] = useState('')
   const [placing, setPlacing] = useState(false)
+  const errorRef = useRef(null)
+
+  // On phones the order is placed from the sticky bar, so bring the error into view.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [error])
 
   const preorder = mode === 'DINE_IN'
   const tableOrder = mode === 'TABLE' && atRestaurant
@@ -252,12 +258,18 @@ export default function CheckoutPage({ cart, user, navigate, onPlaced, location,
           <div className="rule" />
           <div className="total"><span>Total</span><strong>{money(total)}</strong></div>
           <p className="note">{mode === 'DELIVERY' ? 'Pay in cash when your order arrives.' : 'Pay at the restaurant when you’re done.'}</p>
-          {error && <p className="form-error" role="alert" style={{ marginBottom: 12 }}>{error}</p>}
+          {error && <p className="form-error" role="alert" ref={errorRef} style={{ marginBottom: 12 }}>{error}</p>}
           <button className="btn btn-primary btn-block" disabled={placing}>
             {placing ? 'Placing order…' : tableOrder ? 'Send to the kitchen' : preorder ? 'Confirm pre-order' : 'Place order'} <Icon name="arrow" size={16} />
           </button>
           <p className="thanks">Thank you for eating local</p>
         </aside>
+        <div className="checkout-bar">
+          <span><small>{count} {count === 1 ? 'item' : 'items'}</small><strong>{money(total)}</strong></span>
+          <button className="btn btn-primary" disabled={placing}>
+            {placing ? 'Placing…' : tableOrder ? 'Send to kitchen' : preorder ? 'Confirm pre-order' : 'Place order'} <Icon name="arrow" size={16} />
+          </button>
+        </div>
       </form>
       </div>
       {pinning && (

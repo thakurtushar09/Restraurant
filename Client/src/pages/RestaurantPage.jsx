@@ -15,6 +15,7 @@ export default function RestaurantPage({ slug, navigate, addToCart, location, di
   const [choosing, setChoosing] = useState(null)
   const [activeCategory, setActiveCategory] = useState('')
   const rootRef = useRef(null)
+  const catNavRef = useRef(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -39,13 +40,21 @@ export default function RestaurantPage({ slug, navigate, addToCart, location, di
       if (visible) setActiveCategory(visible.target.id)
       // Back at the top of the menu: highlight the first category again.
       else if (window.scrollY < 200) setActiveCategory('')
-    }, { rootMargin: '-140px 0px -55% 0px' })
+    }, { rootMargin: `-${(document.querySelector('.header')?.offsetHeight ?? 72) + 68}px 0px -55% 0px` })
     categories.forEach((category) => {
       const node = document.getElementById(`category-${category.id}`)
       if (node) observer.observe(node)
     })
     return () => observer.disconnect()
   }, [categories])
+
+  // Keep the highlighted category chip visible when the nav scrolls sideways (phones).
+  useEffect(() => {
+    const nav = catNavRef.current
+    const link = nav?.querySelector('a.active')
+    if (!nav || !link || nav.scrollWidth <= nav.clientWidth) return
+    nav.scrollTo({ left: link.offsetLeft - (nav.clientWidth - link.offsetWidth) / 2, behavior: 'smooth' })
+  }, [activeCategory])
 
   const openNow = menu ? isOpenAt(menu.openingHours, menu.timezone, new Date()) : false
   const add = (item) => item.variants.length ? setChoosing(item) : addToCart(menu, item, null)
@@ -115,7 +124,7 @@ export default function RestaurantPage({ slug, navigate, addToCart, location, di
           </div>
         )}
         {categories.length > 0 && (
-          <nav className="cat-nav glass" aria-label="Menu categories">
+          <nav className="cat-nav glass" aria-label="Menu categories" ref={catNavRef}>
             {categories.map((category) => (
               <a key={category.id} href={`#category-${category.id}`} className={(activeCategory || `category-${categories[0].id}`) === `category-${category.id}` ? 'active' : ''}>{category.name}</a>
             ))}
