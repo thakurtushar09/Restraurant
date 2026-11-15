@@ -1,8 +1,5 @@
 import Icon from '../components/Icon.jsx'
-import { canManageMenu, BRANCH_STATUS_LABELS } from '../lib.js'
-
-// Customer-facing app (Client/) runs on Vite's default port in development.
-const CUSTOMER_SITE = 'http://localhost:5173'
+import { canManageMenu, BRANCH_STATUS_LABELS, CUSTOMER_SITE } from '../lib.js'
 
 export default function BranchesPage({ workspace, workspaces, role, onSelect, onEditBranch, navigate }) {
   const branches = workspaces.filter((entry) => entry.groupId === workspace.groupId).map((entry) => entry.branch)

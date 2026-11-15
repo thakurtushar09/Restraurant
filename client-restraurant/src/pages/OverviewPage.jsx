@@ -3,7 +3,7 @@ import Icon from '../components/Icon.jsx'
 import StatusChip from '../components/StatusChip.jsx'
 import OrderDrawer from '../components/OrderDrawer.jsx'
 import useNow from '../components/useNow.js'
-import { ACTIVE_STATUSES, STATUS_META, FULFILLMENT_LABELS, money, timeAgo, clock, isToday, scheduleLabel } from '../lib.js'
+import { ACTIVE_STATUSES, STATUS_META, money, timeAgo, clock, isToday, scheduleLabel, fulfillmentLabel } from '../lib.js'
 
 function Kpi({ icon, label, value, sub, loading }) {
   return (
@@ -110,7 +110,7 @@ export default function OverviewPage({ workspace, role, orders, ordersLoading, u
             {queue.map((order) => (
               <button className="queue-row" key={order.id} onClick={() => setSelectedId(order.id)} style={{ border: 0, textAlign: 'left', width: '100%' }}>
                 <StatusChip status={order.orderStatus} />
-                <div><div className="num">#{order.orderNumber.slice(-8)} · {order.customerName}</div><div className="meta">{order.orderItems.length} {order.orderItems.length === 1 ? 'item' : 'items'} · {FULFILLMENT_LABELS[order.fulfillmentType]}</div></div>
+                <div><div className="num">#{order.orderNumber.slice(-8)} · {order.customerName}</div><div className="meta">{order.orderItems.length} {order.orderItems.length === 1 ? 'item' : 'items'} · {fulfillmentLabel(order)}</div></div>
                 <div className="right">
                   <div className="num">{money(order.totalAmount, order.currency)}</div>
                   <div className="meta">{order.scheduledAt && new Date(order.scheduledAt).getTime() > now ? `${scheduleLabel(order)} ${clock(order.scheduledAt)}` : `${timeAgo(order.createdAt, now)} ago`}</div>

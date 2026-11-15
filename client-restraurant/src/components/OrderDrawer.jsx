@@ -2,7 +2,7 @@ import Icon from './Icon.jsx'
 import StatusChip from './StatusChip.jsx'
 import OrderActions from './OrderActions.jsx'
 import { Drawer } from './Overlay.jsx'
-import { money, clock, shortDate, scheduleLabel, FULFILLMENT_LABELS } from '../lib.js'
+import { money, clock, shortDate, scheduleLabel, fulfillmentLabel } from '../lib.js'
 
 const STEPS = [
   ['Placed', 'createdAt'],
@@ -19,7 +19,7 @@ export default function OrderDrawer({ order, role, onUpdate, onClose }) {
 
   return (
     <Drawer
-      eyebrow={`${FULFILLMENT_LABELS[order.fulfillmentType]} · ${shortDate(order.createdAt)}`}
+      eyebrow={`${fulfillmentLabel(order)} · ${shortDate(order.createdAt)}`}
       title={`Order ${order.orderNumber.slice(-8)}`}
       onClose={onClose}
       footer={<OrderActions order={order} role={role} onUpdate={onUpdate} size="md" />}
@@ -34,10 +34,10 @@ export default function OrderDrawer({ order, role, onUpdate, onClose }) {
       <div className="detail-block">
         <span className="label">Customer</span>
         <strong style={{ fontSize: 15 }}>{order.customerName}</strong>
-        <a href={`tel:${order.customerPhone}`} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--forest)' }}><Icon name="phone" size={14} />{order.customerPhone}</a>
+        {order.tableNumber && <span className="chip chip-forest"><Icon name="qr" size={12} /> Ordered at {order.tableNumber}</span>}
+        {order.customerPhone && <a href={`tel:${order.customerPhone}`} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--forest)' }}><Icon name="phone" size={14} />{order.customerPhone}</a>}
         {address && <span style={{ display: 'flex', gap: 6, color: 'var(--muted)' }}><Icon name="pin" size={14} />{address}</span>}
         {order.partySize && <span>Table for {order.partySize}</span>}
-        {order.tableNumber && <span>Table {order.tableNumber}</span>}
       </div>
 
       {order.customerNotes && (

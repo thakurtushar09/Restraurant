@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import OrderDrawer from '../components/OrderDrawer.jsx'
 import useNow from '../components/useNow.js'
-import { FULFILLMENT_LABELS, clock, cookByTime, minutesFrom, duration, nextActions } from '../lib.js'
+import { clock, cookByTime, minutesFrom, duration, nextActions, fulfillmentLabel } from '../lib.js'
 
 // Ticket timing in kitchen terms: when to fire, how long it's been cooking, how long it's waited.
 function ticketTiming(order, now, prepMinutes) {
@@ -42,7 +42,7 @@ function Ticket({ order, role, now, prepMinutes, onUpdate, onOpen }) {
           <span className="ticket-who">{order.customerName}</span>
         </div>
         <div className="ticket-tags">
-          <span className="chip chip-muted">{FULFILLMENT_LABELS[order.fulfillmentType]}</span>
+          <span className={`chip ${order.tableNumber ? 'chip-forest' : 'chip-muted'}`}>{fulfillmentLabel(order)}</span>
           {order.partySize && <span className="chip chip-muted"><Icon name="users" size={11} /> {order.partySize}</span>}
         </div>
       </header>

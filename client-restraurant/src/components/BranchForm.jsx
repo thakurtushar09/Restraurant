@@ -1,12 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Icon from './Icon.jsx'
+import LocationPicker from './LocationPicker.jsx'
 import { WEEK_DAYS, CURRENCIES, BRANCH_STATUS_LABELS, PHONE_PATTERN, timezones } from '../lib.js'
 
 // Controlled form for branch details. `sections` picks which groups render,
 // so onboarding can split them across steps.
 export default function BranchForm({ value, onChange, sections = ['contact', 'location', 'operations', 'hours'], showStatus = false }) {
-  const [locating, setLocating] = useState(false)
-  const [locateError, setLocateError] = useState('')
   const zones = useMemo(() => timezones(), [])
   const show = (name) => sections.includes(name)
 
@@ -19,25 +18,10 @@ export default function BranchForm({ value, onChange, sections = ['contact', 'lo
     onChange({ ...value, openingHours: Object.fromEntries(WEEK_DAYS.map(([day]) => [day, { ...monday }])) })
   }
 
-  function useCurrentLocation() {
-    if (!navigator.geolocation) {
-      setLocateError('Location is not available in this browser.')
-      return
-    }
-    setLocating(true)
-    setLocateError('')
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        onChange({ ...value, latitude: position.coords.latitude.toFixed(6), longitude: position.coords.longitude.toFixed(6) })
-        setLocating(false)
-      },
-      () => {
-        setLocateError('Could not get your location. Enter it manually or leave it blank.')
-        setLocating(false)
-      },
-      { timeout: 10000 },
-    )
-  }
+  const pin = value.latitude !== '' && value.longitude !== '' ? { latitude: Number(value.latitude), longitude: Number(value.longitude) } : null
+  const setPin = ({ latitude, longitude }) => onChange({ ...value, latitude: latitude == null ? '' : String(latitude), longitude: longitude == null ? '' : String(longitude) })
+  // Only fields the lookup found replace what the owner typed.
+  const fillAddress = (address) => onChange({ ...value, ...Object.fromEntries(Object.entries(address).filter(([, part]) => part)) })
 
   const noFulfillment = !value.acceptsDelivery && !value.acceptsDineIn
 
@@ -59,12 +43,11 @@ export default function BranchForm({ value, onChange, sections = ['contact', 'lo
         <label className="field">State<input value={value.state} onChange={set('state')} maxLength={100} required /></label>
         <label className="field">Postal code<input value={value.postalCode} onChange={set('postalCode')} pattern="[A-Za-z0-9][A-Za-z0-9 \-]{2,9}" title="3–10 letters or digits" required /></label>
         <label className="field">Country<input value={value.country} onChange={set('country')} maxLength={100} required /></label>
-        <div className="span-2 coords">
-          <label className="field">Latitude <small>optional</small><input type="number" step="any" min="-90" max="90" value={value.latitude} onChange={set('latitude')} required={value.longitude !== ''} /></label>
-          <label className="field">Longitude <small>optional</small><input type="number" step="any" min="-180" max="180" value={value.longitude} onChange={set('longitude')} required={value.latitude !== ''} /></label>
-          <button type="button" className="btn btn-ghost" onClick={useCurrentLocation} disabled={locating}><Icon name="pin" size={15} />{locating ? 'Locating…' : 'Use my location'}</button>
+        <div className="field span-2">
+          Map location
+          <LocationPicker value={pin} onChange={setPin} onAddress={fillAddress} radiusKm={value.acceptsDelivery ? Number(value.deliveryRadiusKm) || 0 : 0} />
+          {!pin && <small className="form-hint error">Without a pin, customers who search near them won’t see this branch.</small>}
         </div>
-        {locateError && <p className="form-hint span-2">{locateError}</p>}
       </>}
 
       {show('operations') && <>
@@ -82,6 +65,12 @@ export default function BranchForm({ value, onChange, sections = ['contact', 'lo
           </div>
           {noFulfillment && <small className="form-hint error">Turn on at least one option.</small>}
         </div>
+        {value.acceptsDelivery && (
+          <label className="field span-2">Delivery radius (km)
+            <input type="number" min="1" max="50" step="1" value={value.deliveryRadiusKm} onChange={set('deliveryRadiusKm')} required />
+            <small>Customers further than this from the pin can still pre-order, but can’t get delivery.</small>
+          </label>
+        )}
         <label className="field">Average prep time (minutes)<input type="number" min="1" max="240" step="1" value={value.averagePreparationTimeMinutes} onChange={set('averagePreparationTimeMinutes')} required /></label>
         <label className="field">Currency
           <select value={value.currency} onChange={set('currency')}>

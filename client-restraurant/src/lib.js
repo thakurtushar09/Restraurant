@@ -1,3 +1,9 @@
+// Customer-facing app (Client/). Set VITE_CUSTOMER_APP_URL to the address guests' phones can open.
+export const CUSTOMER_SITE = (import.meta.env.VITE_CUSTOMER_APP_URL || 'http://localhost:5173').replace(/\/$/, '')
+
+// The link printed in a branch's QR code: its menu, marked as scanned so checkout offers "at my table".
+export const scanUrl = (branch) => `${CUSTOMER_SITE}/restaurant/${encodeURIComponent(branch.publicSlug)}?scan=1`
+
 // API client — Vite proxies /api to the Express server, so the auth cookie is same-origin.
 export async function api(path, { method = 'GET', body, signal } = {}) {
   const response = await fetch(`/api/v1${path}`, {
@@ -85,6 +91,8 @@ export const ACTIVE_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'OU
 export const CLOSED_STATUSES = ['COMPLETED', 'REJECTED', 'CANCELLED', 'EXPIRED']
 // DINE_IN orders are pre-orders: the guest picks an arrival time and the food is ready when they sit down.
 export const FULFILLMENT_LABELS = { DELIVERY: 'Delivery', PICKUP: 'Pickup', DINE_IN: 'Pre-order' }
+// Orders placed by scanning a table's QR show the table instead of "Pre-order".
+export const fulfillmentLabel = (order) => order.tableNumber || FULFILLMENT_LABELS[order.fulfillmentType]
 
 export function scheduleLabel(order) {
   return order.fulfillmentType === 'DINE_IN' ? 'Arrives' : 'Deliver at'
@@ -213,7 +221,7 @@ export function emptyBranchForm() {
   return {
     branchName: '', phone: '', email: '',
     addressLine1: '', addressLine2: '', landmark: '', city: '', state: '', postalCode: '', country: 'India',
-    latitude: '', longitude: '',
+    latitude: '', longitude: '', deliveryRadiusKm: '10',
     timezone: 'Asia/Kolkata', currency: 'INR', averagePreparationTimeMinutes: '30',
     acceptsDelivery: true, acceptsPickup: false, acceptsDineIn: true,
     openingHours: defaultHours(),
@@ -238,6 +246,7 @@ export function branchFormToPayload(form, { includeStatus = false } = {}) {
     ...fields,
     acceptsPickup: false, // pickup is switched off for now
     averagePreparationTimeMinutes: Number.parseInt(form.averagePreparationTimeMinutes, 10),
+    deliveryRadiusKm: Number.parseInt(form.deliveryRadiusKm, 10) || 10,
     latitude: coordinate(form.latitude),
     longitude: coordinate(form.longitude),
     openingHours: Object.fromEntries(WEEK_DAYS.map(([day]) => {
