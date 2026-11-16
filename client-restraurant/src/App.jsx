@@ -274,7 +274,7 @@ export default function App() {
     <>
       <header className="navbar">
         <div className="navbar-inner">
-          {!isManage && <a className="wordmark" href={`/${home}`} onClick={(event) => { event.preventDefault(); navigate(home) }}>CraveQ</a>}
+          {!isManage && <a className="wordmark" href={`/${home}`} onClick={(event) => { event.preventDefault(); navigate(home) }}><img src="/logo.svg" alt="CraveQ" /></a>}
 
           {/* Becomes a bottom tab bar on phones, unless there's only one page to go to. */}
           <nav className={`nav-links${navPages.length < 2 ? ' single' : ''}`} aria-label="Dashboard">

@@ -321,10 +321,10 @@ function App() {
 
   return (
     <>
-      <header className="header" ref={headerRef}>
+      <header className={`header${['auth', 'forgot', 'reset'].includes(page) ? ' is-auth' : ''}`} ref={headerRef}>
         <div className="wrap header-inner">
           <a className="wordmark" href="/" onClick={link('home')} aria-label="CraveQ home">
-            <strong>CraveQ</strong><small>good food, good days</small>
+            <img src="/logo.svg" alt="CraveQ" /><small>good food, good days</small>
           </a>
           <LocationMenu
             user={user}
@@ -374,7 +374,7 @@ function App() {
       ) : page === 'reset' ? (
         <ResetPasswordPage onDone={onAuthenticated} onForgot={() => navigate('forgot')} />
       ) : page === 'auth' ? (
-        <AuthPage key={param} onForgot={() => navigate('forgot')} mode={param === 'signup' ? 'signup' : 'login'} onSwitch={(mode) => navigate('auth', mode)} onBack={() => navigate(postAuthPage === 'checkout' ? 'cart' : postAuthPage)} onAuthenticated={onAuthenticated} />
+        <AuthPage onForgot={() => navigate('forgot')} mode={param === 'signup' ? 'signup' : 'login'} onSwitch={(mode) => navigate('auth', mode)} onBack={() => navigate(postAuthPage === 'checkout' ? 'cart' : postAuthPage)} onAuthenticated={onAuthenticated} />
       ) : page === 'cart' ? (
         <CartPage cart={cart} user={user} navigate={navigate} openAuth={openAuth} changeQuantity={changeQuantity} />
       ) : page === 'checkout' ? (
@@ -396,7 +396,7 @@ function App() {
           <div className="band-glow" aria-hidden="true" />
           <div className="wrap footer-inner">
             <div className="footer-brand">
-              <a className="wordmark" href="/" onClick={link('home')}><strong>CraveQ</strong><small>good food, good days</small></a>
+              <a className="wordmark" href="/" onClick={link('home')}><img src="/logo-light.svg" alt="CraveQ" /><small>good food, good days</small></a>
               <p className="tagline">Pre-order from local kitchens and walk in to a meal that’s ready when you are.</p>
             </div>
             <nav className="col" aria-label="Discover">

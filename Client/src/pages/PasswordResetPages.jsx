@@ -1,18 +1,17 @@
 import { useState } from 'react'
 import Icon from '../components/Icon.jsx'
+import AuthLayout from '../components/AuthLayout.jsx'
 import { api } from '../lib.js'
 
 function Shell({ children }) {
   return (
-    <main className="auth">
-      <section className="auth-visual">
-        <div className="auth-photo" aria-hidden="true" />
-        <span className="band-pill">Account recovery</span>
-        <h1 style={{ marginTop: 16 }}><span>Happens to everyone. <em>Let’s get you back.</em></span></h1>
-        <p>We’ll email you a link to choose a new password. It works once and expires after an hour.</p>
-      </section>
-      <section className="auth-panel">{children}</section>
-    </main>
+    <AuthLayout
+      eyebrow="Account recovery"
+      title={<>Happens to everyone. <em>Let’s get you back.</em></>}
+      lede="We’ll email you a link to choose a new password. It works once and expires after an hour."
+    >
+      {children}
+    </AuthLayout>
   )
 }
 

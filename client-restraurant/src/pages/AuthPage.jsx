@@ -32,7 +32,7 @@ export default function AuthPage({ mode, onSwitch, onAuthenticated }) {
   return (
     <div className="auth">
       <section className="auth-visual">
-        <span className="wordmark">CraveQ</span>
+        <span className="wordmark"><img src="/logo-light.svg" alt="CraveQ" /></span>
         <div>
           <span className="eyebrow" style={{ color: 'var(--sage)' }}>Restaurant dashboard</span>
           <h1 style={{ marginTop: 16 }}>Run a calmer<br /><em>service.</em></h1>

@@ -49,7 +49,7 @@ export default function OnboardingPage({ user, hasRestaurants, onCreated, onCanc
     <div className="onboarding">
       <div className="onboarding-inner">
         <div className="onboarding-head">
-          <span className="wordmark">CraveQ</span>
+          <span className="wordmark"><img src="/logo.svg" alt="CraveQ" /></span>
           {hasRestaurants
             ? <button className="btn btn-ghost btn-sm" onClick={onCancel}>Back to dashboard</button>
             : <button className="btn btn-ghost btn-sm" onClick={onSignOut}><Icon name="logout" size={15} /> Sign out</button>}
