@@ -97,7 +97,7 @@ export function isOpenAt(hours, timeZone, date) {
   return false
 }
 
-// [{ key, label, slots: [{ iso, label }] }] for the next week, skipping days with no bookable time.
+// [{ key, label, slots: [{ iso, label }], year, month, day, hours }] for the next week, skipping days with no bookable time.
 export function buildSlotDays(branch, now = new Date()) {
   const timeZone = branch.timezone || 'Asia/Kolkata'
   const earliest = now.getTime() + (branch.averagePreparationTimeMinutes ?? 30) * 60000
@@ -111,7 +111,7 @@ export function buildSlotDays(branch, now = new Date()) {
     // Noon avoids DST edges when stepping whole days.
     const noon = zonedTimeToDate(start.year, start.month, start.day, 12 * 60, timeZone)
     const dayDate = new Date(noon.getTime() + offset * 24 * 60 * 60000)
-    const { year, month, day } = zonedParts(dayDate, timeZone)
+    const { year, month, day, weekday } = zonedParts(dayDate, timeZone)
     const slots = []
     for (let minutes = 0; minutes < 24 * 60; minutes += SLOT_MINUTES) {
       const instant = zonedTimeToDate(year, month, day, minutes, timeZone)
@@ -125,10 +125,35 @@ export function buildSlotDays(branch, now = new Date()) {
         key: `${year}-${month}-${day}`,
         label: offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : dayLabel.format(dayDate),
         slots,
+        year, month, day,
+        hours: hoursLabel(branch.openingHours?.[weekday]),
       })
     }
   }
   return days
+}
+
+const clockLabel = (minutes) => {
+  const h = Math.floor(minutes / 60) % 24
+  return `${h % 12 || 12}:${String(minutes % 60).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+}
+const hoursLabel = (today) => (today && !today.closed ? `${clockLabel(toMinutes(today.open))} – ${clockLabel(toMinutes(today.close))}` : null)
+
+// Key of the buildSlotDays() day an instant falls on, and its minutes past midnight, in the branch's timezone.
+export function zonedDayAndMinutes(iso, timeZone) {
+  const { year, month, day, minutes } = zonedParts(new Date(iso), timeZone || 'Asia/Kolkata')
+  return { key: `${year}-${month}-${day}`, minutes }
+}
+
+// A customer-picked wall-clock time on `day` (from buildSlotDays): { iso } if the server will accept it, else { error }.
+export function checkCustomTime(branch, day, minutes, now = new Date()) {
+  const timeZone = branch.timezone || 'Asia/Kolkata'
+  const prep = branch.averagePreparationTimeMinutes ?? 30
+  const instant = zonedTimeToDate(day.year, day.month, day.day, minutes, timeZone)
+  if (instant.getTime() < now.getTime() + prep * 60000) return { error: `That’s too soon — the kitchen needs about ${prep} min.` }
+  if (instant.getTime() > now.getTime() + MAX_DAYS * 24 * 60 * 60000) return { error: 'You can book up to a week ahead.' }
+  if (!isOpenAt(branch.openingHours, timeZone, instant)) return { error: 'The restaurant is closed at that time.' }
+  return { iso: instant.toISOString() }
 }
 
 export function formatInZone(iso, timeZone, options = { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) {

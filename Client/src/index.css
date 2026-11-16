@@ -293,6 +293,37 @@ h1 em,h2 em{font-style:italic;color:var(--sage-ink)}
 .slots button{min-height:40px;border:1px solid var(--line-strong);border-radius:8px;background:var(--white);font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;transition:background .15s,border-color .15s,color .15s}
 .slots button:hover{border-color:var(--forest-soft)}
 .slots button.active{border-color:var(--forest);background:var(--forest);color:#fff;font-weight:600}
+.slot-modes{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:12px;background:var(--mist)}
+.slot-modes::before{content:'';position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:9px;background:var(--white);box-shadow:0 1px 2px #1d30251a,0 3px 10px #1d302512;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.slot-modes.is-custom::before{transform:translateX(100%)}
+.slot-modes button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;border:0;background:none;color:var(--muted);font-size:13px;font-weight:600;transition:color .2s}
+.slot-modes button[aria-selected="true"]{color:var(--forest-deep)}
+.custom-time{display:grid;gap:12px}
+.clock{display:grid;justify-items:center;gap:12px;padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--white)}
+.clock-readout{display:flex;align-items:center;gap:14px}
+.clock-digits{display:flex;align-items:center;gap:4px;font-size:40px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.clock-digits>span{color:var(--faint)}
+.clock-digits button{padding:6px 10px;border:0;border-radius:12px;background:var(--mist);color:var(--muted);transition:background .15s,color .15s}
+.clock-digits button.active{background:var(--pale-sage);color:var(--forest-deep)}
+.clock-ampm{display:grid;overflow:hidden;border:1px solid var(--line-strong);border-radius:10px}
+.clock-ampm button{min-width:48px;padding:6px 10px;border:0;background:var(--white);color:var(--muted);font-size:13px;font-weight:600}
+.clock-ampm button+button{border-top:1px solid var(--line-strong)}
+.clock-ampm button[aria-pressed="true"]{background:var(--forest);color:#fff}
+.clock-dial{width:min(100%,240px);height:auto;touch-action:none;cursor:pointer;user-select:none;-webkit-user-select:none;border-radius:50%}
+.clock-dial:focus-visible{outline:2px solid var(--forest-soft);outline-offset:4px}
+.clock-dial .face{fill:var(--mist)}
+.clock-dial .tick{stroke:#31483a40;stroke-width:1.5;stroke-linecap:round}
+.clock-dial .hand{stroke:var(--forest);stroke-width:2.5;stroke-linecap:round}
+.clock-dial .hub{fill:var(--forest)}
+.clock-dial .knob{fill:var(--forest)}
+.clock-dial .knob-dot{fill:#fff}
+.clock-dial .num{fill:var(--ink);font-size:15px;font-weight:500;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.clock-dial .num.selected{fill:#fff;font-weight:700}
+.clock-tip{color:var(--muted);font-size:12px}
+.custom-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:11px 14px;border-radius:var(--radius-sm);background:#29453a0f;color:var(--forest-deep);font-size:14px}
+.custom-status.error{background:#b423180d;color:var(--danger)}
+.custom-status>span{flex:1 1 180px}
+.custom-status .link{font-size:13px}
 
 .page-head.compact{padding:8px 0 24px}
 .checkout-steps{display:grid;gap:16px}
