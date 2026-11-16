@@ -21,7 +21,8 @@ export async function sendEmail(to: string, content: EmailContent): Promise<Send
 
   try {
     const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+      // Any address on the verified craveq.in domain works; EMAIL_FROM overrides it.
+      from: process.env.EMAIL_FROM || "CraveQ <noreply@craveq.in>",
       to,
       subject: content.subject,
       html: content.html,

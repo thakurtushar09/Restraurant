@@ -34,7 +34,7 @@ app.use("/api", rateLimit({ name: "api", windowSeconds: 60, max: 300, message: "
 app.get("/", (_req, res) => {
   res.status(200).json({
     success: true,
-    message: "Restaurant Platform API is running",
+    message: "CraveQ API is running",
   });
 });
 

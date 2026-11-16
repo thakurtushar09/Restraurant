@@ -72,13 +72,14 @@ export function renderLayout({ preheader, eyebrow, heading, blocks, button, foot
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:${COLORS.paper};border:1px solid ${COLORS.line};border-radius:16px;">
         <tr><td style="height:6px;background:${COLORS.forest};border-radius:16px 16px 0 0;font-size:0;line-height:0;">&nbsp;</td></tr>
         <tr><td style="padding:32px 32px 8px;">
+          <p style="margin:0 0 24px;font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:26px;font-weight:600;color:${COLORS.forest};">CraveQ</p>
           ${eyebrow ? `<p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:${COLORS.green};">${escapeHtml(eyebrow)}</p>` : ""}
           <h1 style="margin:0 0 20px;font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;font-weight:600;color:${COLORS.forest};">${escapeHtml(heading)}</h1>
           ${blocks.join("\n")}
           ${buttonHtml}
         </td></tr>
         <tr><td style="padding:20px 32px 28px;border-top:1px solid ${COLORS.line};">
-          <p style="margin:0;font-size:12px;line-height:18px;color:${COLORS.muted};">${footnote ? `${escapeHtml(footnote)}<br>` : ""}This is an automated message — replies aren't monitored.</p>
+          <p style="margin:0;font-size:12px;line-height:18px;color:${COLORS.muted};">${footnote ? `${escapeHtml(footnote)}<br>` : ""}This is an automated message from CraveQ — replies aren't monitored.<br><a href="https://www.craveq.in" style="color:${COLORS.muted};">craveq.in</a></p>
         </td></tr>
       </table>
     </td></tr>
