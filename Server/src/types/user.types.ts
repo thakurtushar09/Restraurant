@@ -20,6 +20,8 @@ export interface UpdateProfileRequestBody {
 export interface LoginRequestBody {
   email: string;
   password: string;
+  // Which app is signing in; each only accepts its own account kind.
+  app?: "customer" | "dashboard";
 }
 
 export interface AuthenticatedUser {

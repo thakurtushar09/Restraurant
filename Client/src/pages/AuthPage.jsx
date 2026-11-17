@@ -73,7 +73,7 @@ export default function AuthPage({ mode, onSwitch, onBack, onForgot, onAuthentic
       const response = await fetch(`/api/v1/users/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isSignup ? { ...form, email } : { email, password: form.password }),
+        body: JSON.stringify(isSignup ? { ...form, email, app: 'customer' } : { email, password: form.password, app: 'customer' }),
       })
       const result = await response.json()
       if (!response.ok || !result.success) throw new Error(result.message || 'We could not sign you in')

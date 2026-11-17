@@ -51,7 +51,7 @@ export async function isAuthenticated(req: Request,res: Response,next: NextFunct
   try {
     const user = await prisma.user.findUnique({
       where: { id: decoded.sub },
-      select: { status: true, deletedAt: true, passwordChangedAt: true },
+      select: { status: true, deletedAt: true, passwordChangedAt: true, userType: true },
     });
 
     if (!user || user.status !== "ACTIVE" || user.deletedAt) {
@@ -64,6 +64,8 @@ export async function isAuthenticated(req: Request,res: Response,next: NextFunct
       reject(res, "Your password was changed. Please sign in again.");
       return;
     }
+
+    res.locals.accountKind = accountKindOf(user.userType);
   } catch (error) {
     next(error);
     return;
@@ -71,4 +73,27 @@ export async function isAuthenticated(req: Request,res: Response,next: NextFunct
 
   res.locals.userId = decoded.sub;
   next();
+}
+
+// One email is either a customer account or a restaurant (owner/staff) account, never both.
+export type AccountKind = "customer" | "restaurant";
+
+export const accountKindOf = (userType: string): AccountKind => (userType === "CUSTOMER" ? "customer" : "restaurant");
+
+export const WRONG_ACCOUNT_MESSAGES: Record<AccountKind, string> = {
+  // Shown when a restaurant account reaches the customer side.
+  customer: "This email is registered as a restaurant account. Sign in on the restaurant dashboard, or use a different email to order food.",
+  // Shown when a customer account reaches the restaurant side.
+  restaurant: "This email is registered as a customer account. Use a different email for your restaurant.",
+};
+
+// Use after isAuthenticated: only lets through accounts of the given kind.
+export function requireAccount(kind: AccountKind) {
+  return (_req: Request, res: Response, next: NextFunction): void => {
+    if (res.locals.accountKind !== kind) {
+      res.status(403).json({ success: false, code: "WRONG_ACCOUNT", message: WRONG_ACCOUNT_MESSAGES[kind] });
+      return;
+    }
+    next();
+  };
 }

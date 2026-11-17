@@ -17,8 +17,8 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   if (!response.ok || !result?.success) {
     const error = new Error(result?.message || `Request failed (${response.status})`)
     error.status = response.status
-    // Session ended elsewhere (password changed, account suspended): App signs out locally.
-    if (response.status === 401) window.dispatchEvent(new CustomEvent('app:unauthorized', { detail: { message: error.message } }))
+    // Session ended elsewhere (password changed, account suspended) or the account belongs to the other app: App signs out locally.
+    if (response.status === 401 || result?.code === 'WRONG_ACCOUNT') window.dispatchEvent(new CustomEvent('app:unauthorized', { detail: { message: error.message } }))
     throw error
   }
   return result

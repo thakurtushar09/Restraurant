@@ -8,6 +8,7 @@ import { passwordChangedEmail } from "../emails";
 import { sendEmail, type AppName } from "../utils/send-email";
 import { readVerificationToken, sendVerificationEmail } from "../utils/email-verification";
 import { readResetToken, resetTokenMatches, sendPasswordResetEmail } from "../utils/password-reset";
+import { accountKindOf, WRONG_ACCOUNT_MESSAGES, type AccountKind } from "../middleware/auth.middleware";
 
 const COOKIE_NAME = "token";
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -30,6 +31,10 @@ const sessionUserSelect = {
 } as const;
 
 const readApp = (value: unknown): AppName => (value === "dashboard" ? "dashboard" : "customer");
+
+// The customer site takes customer accounts; the dashboard takes restaurant (owner/staff) accounts.
+const kindForApp = (app: AppName): AccountKind => (app === "dashboard" ? "restaurant" : "customer");
+const appForAccount = (userType: string): AppName => (accountKindOf(userType) === "restaurant" ? "dashboard" : "customer");
 
 // Issues a fresh session cookie; also used after a password change so this device stays signed in.
 function setSessionCookie(res: Response, userId: string): void {
@@ -70,12 +75,15 @@ export async function signup(req: Request,res: Response,next: NextFunction,): Pr
 
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail },
+      select: { userType: true },
     });
 
     if (existingUser) {
+      // Same kind: they just need to log in. Other kind: an email can't be both, so they need a different one.
+      const sameKind = accountKindOf(existingUser.userType) === kindForApp(readApp(app));
       res.status(409).json({
         success: false,
-        message: "Email is already registered",
+        message: sameKind ? "Email is already registered. Log in instead." : WRONG_ACCOUNT_MESSAGES[kindForApp(readApp(app))],
       });
       return;
     }
@@ -87,6 +95,8 @@ export async function signup(req: Request,res: Response,next: NextFunction,): Pr
         fullName: fullName.trim(),
         email: normalizedEmail,
         passwordHash,
+        // Dashboard sign-ups are business accounts from the start, so they can never order as customers.
+        userType: readApp(app) === "dashboard" ? "RESTAURANT_OWNER" : "CUSTOMER",
       },
       select: sessionUserSelect,
     });
@@ -119,7 +129,7 @@ export async function signup(req: Request,res: Response,next: NextFunction,): Pr
 
 // CURRENT SESSION
 export async function getCurrentUser(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -132,7 +142,7 @@ export async function getCurrentUser(
 
     const user = await prisma.user.findFirst({
       where: { id: userId, status: "ACTIVE", deletedAt: null },
-      select: sessionUserSelect,
+      select: { ...sessionUserSelect, userType: true },
     });
 
     if (!user) {
@@ -141,7 +151,16 @@ export async function getCurrentUser(
       return;
     }
 
-    res.status(200).json({ success: true, user });
+    // An app that says which it is only keeps sessions of its own account kind.
+    const app = req.query.app;
+    if (app !== undefined && accountKindOf(user.userType) !== kindForApp(readApp(app))) {
+      res.clearCookie(COOKIE_NAME, cookieOptions);
+      res.status(403).json({ success: false, code: "WRONG_ACCOUNT", message: WRONG_ACCOUNT_MESSAGES[kindForApp(readApp(app))] });
+      return;
+    }
+    const { userType: _userType, ...sessionUser } = user;
+
+    res.status(200).json({ success: true, user: sessionUser });
   } catch (error) {
     next(error);
   }
@@ -150,7 +169,7 @@ export async function getCurrentUser(
 // LOGIN
 export async function login(req: Request,res: Response,next: NextFunction,): Promise<void> {
   try {
-    const { email, password } = req.body as LoginRequestBody;
+    const { email, password, app } = req.body as LoginRequestBody;
 
     if (typeof email !== "string" ||!email.trim() ||typeof password !== "string" ||!password) {
       res.status(400).json({
@@ -181,6 +200,13 @@ export async function login(req: Request,res: Response,next: NextFunction,): Pro
         success: false,
         message: "Invalid email or password",
       });
+      return;
+    }
+
+    // Checked only after the password, so the account kind isn't revealed to someone guessing.
+    const appKind = kindForApp(readApp(app));
+    if (accountKindOf(user.userType) !== appKind) {
+      res.status(403).json({ success: false, code: "WRONG_ACCOUNT", message: WRONG_ACCOUNT_MESSAGES[appKind] });
       return;
     }
 
@@ -420,7 +446,7 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
 // FORGOT PASSWORD: always the same answer, so it can't be used to find out who has an account.
 export async function forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, app } = (req.body ?? {}) as { email?: unknown; app?: unknown };
+    const { email } = (req.body ?? {}) as { email?: unknown };
 
     if (typeof email !== "string" || !email.trim()) {
       res.status(400).json({ success: false, message: "Enter your email address" });
@@ -429,12 +455,13 @@ export async function forgotPassword(req: Request, res: Response, next: NextFunc
 
     const user = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
-      select: { id: true, fullName: true, email: true, passwordHash: true, status: true, deletedAt: true },
+      select: { id: true, fullName: true, email: true, passwordHash: true, status: true, deletedAt: true, userType: true },
     });
 
     // Sent in the background so the response time doesn't reveal whether the account exists.
+    // The link always opens the app this account belongs to, whichever app asked.
     if (user && user.status === "ACTIVE" && !user.deletedAt) {
-      void sendPasswordResetEmail(user, readApp(app));
+      void sendPasswordResetEmail(user, appForAccount(user.userType));
     }
 
     res.status(200).json({

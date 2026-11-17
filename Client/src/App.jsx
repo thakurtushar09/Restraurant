@@ -193,9 +193,10 @@ function App() {
   // Restore session.
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/v1/users/me', { signal: controller.signal })
+    fetch('/api/v1/users/me?app=customer', { signal: controller.signal })
       .then(async (response) => {
-        if (response.status === 401) return null
+        // 403: a restaurant account's session; the server has already cleared it.
+        if (response.status === 401 || response.status === 403) return null
         const result = await response.json()
         if (!response.ok || !result.success) throw new Error(result.message || 'Could not restore your session')
         return result.user

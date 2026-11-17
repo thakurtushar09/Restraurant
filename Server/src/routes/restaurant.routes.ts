@@ -2,7 +2,7 @@ import { Router } from "express";
 import { createRestaurant } from "../controllers/restaurant.controllers";
 import { createBranch, getBranch, updateBranch } from "../controllers/branch.controllers";
 import {addMember,getMembers,updateMember,getMyMemberships,resendInvite,} from "../controllers/member.controllers";
-import { isAuthenticated } from "../middleware/auth.middleware";
+import { isAuthenticated, requireAccount } from "../middleware/auth.middleware";
 import { rateLimit, byUser } from "../middleware/rate-limit.middleware";
 
 // Each add/resend sends an email, so cap them per person.
@@ -10,18 +10,21 @@ const inviteLimit = rateLimit({ name: "member-invite", windowSeconds: 60 * 60, m
 
 const router = Router();
 
-router.post("/", isAuthenticated, createRestaurant);
+// Only restaurant (owner/staff) accounts manage restaurants; customer accounts are turned away.
+const staff = [isAuthenticated, requireAccount("restaurant")];
 
-router.get("/my-memberships", isAuthenticated, getMyMemberships);
+router.post("/", ...staff, createRestaurant);
 
-router.post("/:groupId/branches", isAuthenticated, createBranch);
-router.get("/:groupId/branches/:branchId", isAuthenticated, getBranch);
-router.patch("/:groupId/branches/:branchId", isAuthenticated, updateBranch);
+router.get("/my-memberships", ...staff, getMyMemberships);
+
+router.post("/:groupId/branches", ...staff, createBranch);
+router.get("/:groupId/branches/:branchId", ...staff, getBranch);
+router.patch("/:groupId/branches/:branchId", ...staff, updateBranch);
 
 // Members
-router.post("/:groupId/members", isAuthenticated, inviteLimit, addMember);
-router.get("/:groupId/members", isAuthenticated, getMembers);
-router.patch("/:groupId/members/:memberId", isAuthenticated, updateMember);
-router.post("/:groupId/members/:memberId/resend-invite", isAuthenticated, inviteLimit, resendInvite);
+router.post("/:groupId/members", ...staff, inviteLimit, addMember);
+router.get("/:groupId/members", ...staff, getMembers);
+router.patch("/:groupId/members/:memberId", ...staff, updateMember);
+router.post("/:groupId/members/:memberId/resend-invite", ...staff, inviteLimit, resendInvite);
 
 export default router;

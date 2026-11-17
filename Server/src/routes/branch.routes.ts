@@ -1,6 +1,6 @@
 
 import { Router } from "express";
-import { isAuthenticated } from "../middleware/auth.middleware";
+import { isAuthenticated, requireAccount } from "../middleware/auth.middleware";
 import { canManageBranch } from "../middleware/menu.middleware";
 
 import {createMenuCategory,getMenuCategories,updateMenuCategory,deactivateMenuCategory,} from "../controllers/menu-category.controllers";
@@ -12,7 +12,7 @@ import {createMenuItemVariant,getMenuItemVariants,} from "../controllers/menu-va
 const router = Router();
 
 // Every route requires login and branch-level menu permissions.
-router.use("/:branchId", isAuthenticated, canManageBranch);
+router.use("/:branchId", isAuthenticated, requireAccount("restaurant"), canManageBranch);
 
 // Categories
 router.post("/:branchId/categories", createMenuCategory);

@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { isAuthenticated } from "../middleware/auth.middleware";
+import { isAuthenticated, requireAccount } from "../middleware/auth.middleware";
 import {createAddress,getMyAddresses,updateAddress,deleteAddress,} from "../controllers/address.controllers";
 
 const router = Router();
 
-router.use(isAuthenticated);
+router.use(isAuthenticated, requireAccount("customer"));
 router.post("/", createAddress);
 router.get("/", getMyAddresses);
 router.patch("/:addressId", updateAddress);

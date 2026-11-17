@@ -94,12 +94,13 @@ export default function App() {
 
   // Restore session on load.
   useEffect(() => {
-    api('/users/me')
+    api('/users/me?app=dashboard')
       .then(async (result) => {
         setUser(result.user)
         await loadMemberships()
       })
-      .catch((error) => { if (error.status !== 401) toast(error.message, 'error') })
+      // 403: a customer account's session; the server has already cleared it.
+      .catch((error) => { if (error.status !== 401 && error.status !== 403) toast(error.message, 'error') })
       .finally(() => setBooting(false))
   }, [loadMemberships])
 

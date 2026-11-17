@@ -19,7 +19,7 @@ export default function AuthPage({ mode, onSwitch, onAuthenticated }) {
     }
     setSubmitting(true)
     try {
-      const body = isSignup ? { ...form, app: 'dashboard' } : { email: form.email, password: form.password }
+      const body = { ...(isSignup ? form : { email: form.email, password: form.password }), app: 'dashboard' }
       const result = await api(`/users/${mode}`, { method: 'POST', body })
       await onAuthenticated(result.user)
     } catch (err) {

@@ -184,8 +184,17 @@ export const addMember = async (req: Request<GroupParams, {}, AddMemberRequestBo
     const normalizedEmail = email.trim().toLowerCase();
     const targetUser = await prisma.user.findUnique({
       where: { email: normalizedEmail },
-      select: { id: true, fullName: true, email: true, status: true, deletedAt: true },
+      select: { id: true, fullName: true, email: true, status: true, deletedAt: true, userType: true },
     });
+
+    // An email is either a customer or a restaurant account; a customer can't also be staff.
+    if (targetUser && targetUser.userType === "CUSTOMER") {
+      res.status(409).json({
+        success: false,
+        message: "This email already belongs to a customer account. Ask them for a different email to use for work.",
+      });
+      return;
+    }
 
     if (targetUser && (targetUser.status !== "ACTIVE" || targetUser.deletedAt)) {
       res.status(409).json({
